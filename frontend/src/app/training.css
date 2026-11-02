@@ -1,0 +1,667 @@
+.training-selection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 22px;
+  color: #75836b;
+  font-size: 11px;
+}
+.training-selection label {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.training-selection select {
+  padding: 11px 15px;
+  border: 1px solid #dce4d3;
+  border-radius: 7px;
+  background: white;
+  color: #354e2d;
+  max-width: 100%;
+}
+.training-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 23px;
+}
+.training-summary > div {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+}
+.training-summary strong {
+  font-size: 27px;
+  font-weight: 500;
+  letter-spacing: -0.7px;
+  display: block;
+  margin-bottom: 8px;
+  color: #2e624a;
+}
+.training-summary span {
+  font-size: 10px;
+  color: #87967b;
+  line-height: 1.6;
+  display: block;
+}
+.training-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+  align-items: start;
+}
+.training-card {
+  margin-bottom: 24px;
+}
+.training-card .panel-head > svg {
+  color: #8fa47c;
+  flex-shrink: 0;
+}
+.training-body {
+  padding: 0 23px 23px;
+}
+.training-body input[type="file"] {
+  font-size: 11px;
+  padding: 18px 12px;
+  border-style: dashed;
+  background: #fafcf6;
+  line-height: 1.8;
+}
+.training-body input[type="file"]::file-selector-button {
+  border: 0;
+  border-radius: 5px;
+  background: #edf3e5;
+  color: #4c6b3b;
+  padding: 7px 10px;
+  margin-right: 10px;
+  cursor: pointer;
+}
+.roi-stage {
+  position: relative;
+  width: 100%;
+  background: #e9eee2;
+  border-radius: 7px;
+  overflow: hidden;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+.roi-stage img {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+}
+.roi-stage svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.roi-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.roi-fields .field {
+  font-size: 9px;
+  margin-bottom: 13px;
+}
+.roi-fields .field input {
+  padding: 8px;
+  font-size: 11px;
+}
+.training-config {
+  border-top: 1px solid #e8eddf;
+  margin-top: 19px;
+  padding-top: 20px;
+}
+.training-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 15px;
+  min-height: 170px;
+  padding: 35px;
+  color: #84967a;
+}
+.training-empty p {
+  font-size: 12px;
+  line-height: 1.8;
+  max-width: 500px;
+  margin: 0;
+}
+.training-label-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 270px;
+  gap: 24px;
+  padding: 0 23px 23px;
+  align-items: start;
+}
+.sample-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(125px, 1fr));
+  gap: 12px;
+}
+.sample-card {
+  border: 1px solid #e1e8d8;
+  background: #fff;
+  border-radius: 8px;
+  padding: 5px;
+  text-align: left;
+  overflow: hidden;
+  min-width: 0;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.sample-card:hover {
+  border-color: #98b17b;
+}
+.sample-card.selected {
+  border: 2px solid #2b7452;
+  padding: 4px;
+  background: #f1f7e9;
+}
+.sample-card img {
+  width: 100%;
+  height: 95px;
+  object-fit: cover;
+  background: #eef2e6;
+  display: block;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+.sample-card > span {
+  font-size: 9px;
+  color: #768769;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+  padding: 0 5px;
+}
+.sample-card strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: #405c31;
+  display: block;
+  padding: 5px 5px 3px;
+}
+.sample-card small {
+  font-size: 8px;
+  color: #94a284;
+  display: block;
+  padding: 0 5px 7px;
+}
+.sample-editor {
+  padding: 17px;
+  background: #f6f9ef;
+  border: 1px solid #e3ead8;
+  border-radius: 8px;
+}
+.sample-editor > img {
+  width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  background: #e9eedf;
+  border-radius: 5px;
+}
+.sample-editor h3 {
+  font-size: 11px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  margin: 13px 0 18px;
+}
+.sample-editor .field input,
+.sample-editor .field select {
+  font-size: 12px;
+  padding: 9px 10px;
+}
+.training-actions {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.training-actions button:first-child {
+  flex: 1;
+  font-size: 11px;
+}
+.training-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 15px 23px;
+  border-top: 1px solid #e8eedf;
+  font-size: 10px;
+  color: #8c9b7f;
+}
+.training-job-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 17px;
+  padding: 0 23px 23px;
+}
+.training-job-form > .field {
+  flex: 1;
+  margin-bottom: 0;
+}
+.training-job-form > button {
+  margin-bottom: 1px;
+  flex-shrink: 0;
+}
+.training-models {
+  padding: 0 23px 15px;
+}
+.model-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  border-top: 1px solid #e7eddd;
+  padding: 19px 0;
+}
+.model-card h3 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0 0 9px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.model-card p {
+  font-size: 10px;
+  color: #899a78;
+  margin: 6px 0;
+  line-height: 1.7;
+}
+.model-card > div:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.model-card > div:last-child {
+  flex-shrink: 0;
+}
+.analysis-list {
+  padding: 0 23px;
+}
+.analysis-row {
+  border-top: 1px solid #e8eddf;
+  padding: 20px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 25px;
+}
+.analysis-row strong {
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.6px;
+  color: #395c2c;
+  margin-right: 15px;
+}
+.analysis-row span {
+  font-size: 10px;
+  color: #8f9f7e;
+}
+.analysis-row p {
+  font-size: 10px;
+  color: #8a9a78;
+  line-height: 1.7;
+  margin: 7px 0;
+  max-width: 600px;
+}
+.analysis-row form {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.analysis-row label {
+  font-size: 9px;
+  color: #799164;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.analysis-row input {
+  border: 1px solid #dbe6cd;
+  border-radius: 6px;
+  background: white;
+  color: #3e5d2c;
+  padding: 8px;
+  max-width: 100px;
+  font-size: 12px;
+}
+.pending-analysis {
+  background: #fff8e9;
+  border: 1px solid #eee0bb;
+  border-radius: 7px;
+  padding: 12px;
+  margin-bottom: 16px;
+  color: #8c763e;
+  font-size: 10px;
+}
+.pending-analysis strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.pending-analysis p {
+  font-size: 10px;
+  line-height: 1.6;
+  margin: 7px 0 12px;
+}
+@media (max-width: 1100px) {
+  .training-columns {
+    grid-template-columns: 1fr;
+  }
+  .training-label-layout {
+    grid-template-columns: minmax(0, 1fr) 240px;
+  }
+  .training-job-form {
+    flex-wrap: wrap;
+  }
+  .training-job-form > button {
+    width: 100%;
+  }
+  .training-selection {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .analysis-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+@media (max-width: 700px) {
+  .training-summary {
+    gap: 9px;
+  }
+  .training-summary > div {
+    padding: 14px 10px;
+  }
+  .training-summary strong {
+    font-size: 21px;
+  }
+  .training-summary span {
+    font-size: 8px;
+  }
+  .training-body {
+    padding: 0 16px 18px;
+  }
+  .training-label-layout {
+    grid-template-columns: 1fr;
+    padding: 0 16px 18px;
+  }
+  .sample-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .sample-card img {
+    height: 75px;
+  }
+  .sample-editor {
+    grid-row: 1;
+  }
+  .sample-editor > img {
+    max-height: 230px;
+  }
+  .training-selection label {
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+    gap: 8px;
+  }
+  .training-selection select {
+    width: 100%;
+  }
+  .training-selection > span {
+    font-size: 9px;
+  }
+  .training-job-form {
+    padding: 0 16px 18px;
+    gap: 12px;
+  }
+  .training-job-form > .field {
+    min-width: 130px;
+  }
+  .model-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .analysis-list,
+  .training-models {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .roi-fields {
+    gap: 6px;
+  }
+  .roi-fields .field {
+    font-size: 8px;
+  }
+  .training-card .panel-head p {
+    font-size: 9px;
+  }
+}
+
+.learning-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  padding: 20px 24px;
+  border: 1px solid var(--border);
+  background: #f2f7ed;
+  border-radius: 10px;
+  margin-bottom: 22px;
+}
+.learning-header strong {
+  color: #345b2f;
+  font-size: 15px;
+}
+.learning-header p {
+  font-size: 12px;
+  margin: 8px 0;
+}
+.learning-header small {
+  color: #6a7d5c;
+  font-size: 11px;
+}
+.learning-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.learning-toggle input {
+  appearance: none;
+  width: 42px;
+  height: 24px;
+  border-radius: 20px;
+  background: #abb6a2;
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.learning-toggle input::after {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: white;
+  top: 3px;
+  left: 3px;
+  transition: transform 0.15s;
+}
+.learning-toggle input:checked {
+  background: #237c60;
+}
+.learning-toggle input:checked::after {
+  transform: translateX(18px);
+}
+.learning-toggle input:focus-visible {
+  outline: 2px solid #237c60;
+  outline-offset: 3px;
+}
+.training-dropzone {
+  border: 2px dashed #c7d8b5;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 18px;
+  background: #fafcf6;
+}
+.training-dropzone.dragging {
+  background: #e6f2dc;
+  border-color: #237c60;
+}
+.training-dropzone > p {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  margin: 0 0 12px;
+}
+.training-dropzone > span {
+  font-size: 11px;
+  color: #617b50;
+}
+.polygon-points {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 15px;
+}
+.polygon-points > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  background: #f4f8ed;
+  padding: 8px;
+  border-radius: 6px;
+}
+.polygon-points span {
+  font-size: 10px;
+  width: 100%;
+}
+.polygon-points label {
+  font-size: 9px;
+  flex: 1;
+  min-width: 45px;
+}
+.polygon-points input {
+  width: 100%;
+  border: 1px solid #dbe6cd;
+  border-radius: 4px;
+  padding: 5px;
+  font-size: 11px;
+}
+.reference-thumb {
+  position: relative;
+  border: 1px solid #dbe6cd;
+  border-radius: 7px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #edf3e5;
+  cursor: zoom-in;
+  width: 126px;
+}
+.reference-thumb img {
+  display: block;
+  width: 100%;
+  height: 90px;
+  object-fit: cover;
+}
+.reference-thumb > svg {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  padding: 2px;
+  background: white;
+  border-radius: 3px;
+  color: #237c60;
+}
+.reference-thumb.sample-reference {
+  width: 100%;
+}
+.reference-thumb.sample-reference img {
+  height: 180px;
+  object-fit: contain;
+}
+.reference-missing {
+  max-width: 126px;
+  font-size: 10px;
+}
+.image-lightbox {
+  border: 0;
+  border-radius: 10px;
+  padding: 15px;
+  width: 95vw;
+  max-width: 1600px;
+  height: 95vh;
+  max-height: 95vh;
+  background: #15241f;
+  color: white;
+}
+.image-lightbox::backdrop {
+  background: rgba(0, 0, 0, 0.8);
+}
+.lightbox-controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  height: 42px;
+}
+.lightbox-image {
+  height: calc(100% - 54px);
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: auto;
+}
+.lightbox-image img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.lightbox-image.zoomed {
+  display: block;
+}
+.lightbox-image.zoomed img {
+  max-width: none;
+  max-height: none;
+}
+.analysis-row > div {
+  flex: 1;
+}
+.analysis-row form {
+  flex-wrap: wrap;
+  max-width: 350px;
+}
+@media (max-width: 1100px) {
+  .learning-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+@media (max-width: 600px) {
+  .polygon-points {
+    grid-template-columns: 1fr;
+  }
+}

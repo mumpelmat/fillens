@@ -1,0 +1,19 @@
+[project]
+name = "fillens-backend"
+version = "0.5.2"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1", "uvicorn>=0.34,<1", "sqlalchemy>=2.0,<3",
+  "psycopg[binary]>=3.2,<4", "alembic>=1.15,<2", "pydantic-settings>=2.8,<3",
+  "pwdlib[argon2]>=0.2,<1", "cryptography>=44", "pillow>=11,<13",
+  "numpy>=2.0,<3", "opencv-python-headless>=4.10,<5", "scikit-learn>=1.5,<2",
+  "python-multipart>=0.0.20,<1",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "httpx>=0.28,<1", "pyftpdlib>=2,<3"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -1,0 +1,86 @@
+name: fillens
+x-app-environment: &app-environment
+  DATABASE_URL: postgresql+psycopg://fillens:${POSTGRES_PASSWORD:?Bitte scripts/init_env.py ausführen}@postgres:5432/fillens
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Bitte scripts/init_env.py ausführen}
+  DATA_DIR: /data
+  ML_DATA_DIR: /ml
+  APP_BASE_PATH: ${APP_BASE_PATH:-}
+  COOKIE_SECURE: ${COOKIE_SECURE:-true}
+  SESSION_HOURS: ${SESSION_HOURS:-12}
+  FTP_POLL_SECONDS: ${FTP_POLL_SECONDS:-60}
+  FTP_SETTLE_SECONDS: ${FTP_SETTLE_SECONDS:-30}
+  FTP_TIMEOUT_SECONDS: ${FTP_TIMEOUT_SECONDS:-20}
+  MAX_IMAGE_BYTES: ${MAX_IMAGE_BYTES:-15728640}
+  MAX_SCAN_FILES: ${MAX_SCAN_FILES:-10000}
+  MAX_IMPORTS_PER_CYCLE: ${MAX_IMPORTS_PER_CYCLE:-100}
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: fillens
+      POSTGRES_DB: fillens
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Bitte scripts/init_env.py ausführen}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U fillens -d fillens"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  backend:
+    build: ./backend
+    environment: *app-environment
+    volumes:
+      - image_data:/data:ro
+      - ml_data:/ml
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+    restart: unless-stopped
+  worker:
+    build: ./backend
+    command: [python, -m, app.worker]
+    environment: *app-environment
+    volumes:
+      - image_data:/data
+      - ml_data:/ml
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -m, app.healthcheck]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    stop_grace_period: 45s
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        APP_BASE_PATH: ${APP_BASE_PATH:-}
+    environment:
+      BACKEND_INTERNAL_URL: http://backend:8000
+      MAX_TRAINING_UPLOAD_BYTES: ${MAX_IMAGE_BYTES:-15728640}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000${APP_BASE_PATH:-}/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+volumes:
+  postgres_data:
+  image_data:
+  ml_data:

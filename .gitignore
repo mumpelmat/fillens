@@ -1,0 +1,17 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+node_modules/
+.next/
+*.tsbuildinfo
+data/
+*.db
+!.env.example
+.DS_Store
+# Interne Projektdokumentation, nicht öffentlich
+docs/AI_SESSION_HANDOFF.md
+docs/PLAN_REVIEW.md
+docs/SOFTWARE_ASSET_MEMO.md

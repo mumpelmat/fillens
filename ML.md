@@ -1,0 +1,54 @@
+# Gemeinsamer Lernstand und Bildprüfung · Fillens 0.5.1
+
+## Bedienung
+
+Pro Behälter gibt es einen sichtbaren Lernstand. Betreiber fügen Bilder hinzu und bestätigen den tatsächlichen Füllstand; Training, Qualitätsprüfung und Übernahme erfolgen im Hintergrund. Modellnamen, Versionslisten, separate Tag-/Nachtmodelle und Aktivierungsbuttons sind nicht Teil der normalen Bedienung. Historische Versionen bleiben intern erhalten.
+
+Die gemeinsame Prüfliste zeigt Uploads und Kamerareferenzen einmal je Trainingsbild. Standard ist „Zu prüfen“; „Bestätigt“ erlaubt Nachbearbeitung. Großes Bild/Lightbox, Eingabe und „Bestätigen & weiter“ stehen zusammen. „Verwerfen & weiter“ schließt ein offenes Bild dauerhaft aus Prüfung und künftigem Training aus und schafft einen Sammelplatz. Hash/Herkunft bleiben zur Wiederaufnahmesperre erhalten. „Weiteres Bild“ unter Bestätigt ist reine Navigation. Bilddetails enthalten korrigierbare Tag-/Nachtzuordnung und Aufnahmegruppe. Polygon-ROI und technische Einstellungen sind bei Bedarf erreichbar.
+
+Uploads unterstützen Drag-and-drop/Mehrfachauswahl sowie optional vorhandene Aufnahmegruppen und einen gemeinsamen tatsächlichen Füllstand. Automatisch erzeugte Kamera-Gruppen bleiben pro UTC-Tag zusammen; Standarduploads verwenden dieselbe Tagesbenennung. Für alte Bilder kann der Betreiber eine passende frühere Gruppe wählen. Keine künstliche neue Gruppe pro Einzelbild zur scheinbaren unabhängigen Validierung.
+
+## Daten und Aufbewahrung
+
+Produktivpuffer maximal drei JPEGs pro Kamera. Trainingsbilder/Prüfreferenzen im eigenen ml_data-Volume ohne Bildanzahllimit, bis zur ausdrücklichen Löschung. Automatische Live-Referenzen und zusätzlicher FTP-Trainingsabruf teilen sich je Behälter maximal 50 offene unbestätigte automatische Bilder. Bestätigte Bilder und Uploads zählen nicht zum Limit; bestehende Überbestände bleiben erhalten. Der zusätzliche Abruf arbeitet auch vor dem ersten Modell, berücksichtigt die letzten 168 Stunden und verteilt Kandidaten zeitlich über diesen Zeitraum. Produktivimport und Messwertübernahme bleiben davon unabhängig. Pro Datei MAX_IMAGE_BYTES, maximal 25 Millionen Pixel, JPEG/PNG/WebP ohne EXIF normalisiert. Modelle bleiben administrativ. Normale angemeldete Nutzer dürfen bei eingeschaltetem Lernen vorhandene Referenzen ansehen, Füllstände bestätigen/korrigieren und offene Bilder verwerfen. Uploads, Modus-/Serienänderungen, Konfiguration und allgemeine Löschung bleiben administrativ. Bei Lernpause sind alle Trainingslese-/Schreibzugriffe normaler Nutzer gesperrt; der Reiter verschwindet, wenn kein Behälter freigegeben ist.
+
+training_samples speichert menschliche Vorgaben, Aufnahmegruppe, Bildmodus, Ausrichtung, Hash, Herkunft, Aufnahmezeit und Verwerfungszeit. training_collection enthält Kandidaten-/Tagesordnerfortschritt und sicheren Status; training_fetch_records merkt bereits behandelte FTP-Dateiversionen je Ausrichtung. Migration 0007 ergänzt diese Felder/Tabellen und klassifiziert vorhandene Kamerareferenzen anhand ihrer Verknüpfungen. analysis_results behält einzelne Modellvorschläge und Referenzverknüpfungen; mehrere Vorschläge zum selben Trainingsbild werden in der UI zusammengefasst. Gemeinsame Bestätigung speichert das menschliche Label und übernimmt offene Kameraergebnisse als geprüfte Messung. Bereits übernommene Werte werden bei Trainingskorrekturen nicht nachträglich geändert. Original-Rohwerte bleiben erhalten. Reine Uploadbewertungen und historische FTP-Trainingsbewertungen erzeugen keine Messungen, Raten oder Warnungen. Wiederholtes Bestätigen erzeugt keine doppelten Messwerte.
+
+Während laufender/ausstehender Jobs sind verwendete Quelldateien gegen Löschung geschützt. Verworfene Dateien werden anschließend bereinigt; der Sperrdatensatz bleibt erhalten. Bereits gespeicherte Messwerte und Modelle bleiben unverändert. Bestätigte Referenzen werden nicht automatisch gelöscht: Für die laufende Erkennung reicht das fertige Modellartefakt, für späteres vollständiges Nachtraining, erneute Qualitätsprüfung und andere Bildbereiche werden die Bilder benötigt. Sieben Tage begrenzen die Suche, nicht die Aufbewahrung. Ein Downgrade 0007 mit verworfenen Referenzen ist gesperrt; passende DB-/ML-Sicherung wiederherstellen.
+
+## Bildbereich und Merkmale
+
+Normiertes Vieleck mit 3–32 Punkten, verschiebbaren Eckpunkten und Prozentkoordinaten; Grenzen, Fläche, verschiedene Punkte und Selbstüberschneidungen geprüft. Alte Rechtecke bleiben lesbar. ROI gilt für Training/Inferenz. Drehung/Spiegelung werden beim Import/Upload normalisiert; alte anders ausgerichtete Bilder müssen neu hinzugefügt werden.
+
+Rechteckmerkmale roi_features_v1, maskierte Polygonmerkmale roi_polygon_v2, jeweils 133 Werte aus räumlicher Grauverteilung, HSV-Histogrammen, Kanten und Qualitätswerten. Außenpixel bei Polygonen neutralisiert/ausgeschlossen. Keine metrische Perspektiv- oder Volumenkalibrierung.
+
+## Training und automatische Qualitätsfreigabe
+
+Worker trainiert einen gemeinsamen RandomForestRegressor auf allen geeigneten menschlich bestätigten Tages-/Nachtvorgaben (96 Bäume, Tiefe 12, fester Zufallsstart). Gruppenweise bis fünf deterministische Group-Shuffle-Holdouts, 64 Bäume je Prüfdurchlauf; Bildgruppen bleiben getrennt. Jeder Modus wird nur in Folds gewertet, deren Trainingsanteil für diesen Modus mindestens drei Sollwerte und 40 Prozentpunkte Spannweite besitzt.
+
+**Freigabe pro Bildmodus:** mindestens zwölf bestätigte Bilder, drei Sollwerte, 40 Prozentpunkte Spannweite, zwei Aufnahmegruppen, mindestens zwei verschiedene zurückgehaltene Bilder und mittlerer absoluter Fehler höchstens zehn Prozentpunkte. Ein gemeinsamer Lernstand kann nur für Tag freigegeben sein. Nachtprognosen bleiben dann unabhängig vom gemeinsamen Durchschnitt zur Prüfung offen. Heuristische Tag-/Nachterkennung ist manuell korrigierbar, keine garantierte physische Lichtklassifikation.
+
+Gemeinsame Lernstände speichern mode_quality und managed_learning im eigenen JSON-Artefakt und Qualitätsmetadaten im DB-Datensatz. Keine Pickle-/Modelluploads oder externe KI-API. SHA256 vor Übernahme/Inferenz. Fingerprint aus Konfiguration und immutablem Dataset-Snapshot verhindert erneutes Training identischer Daten und Übernahme veralteter Labels/Serien/Modi. Mehrere Bestätigungen während eines Jobs bleiben als learning_dirty vorgemerkt.
+
+Übernahme atomar unter Kamera-Zeilensperre, nur bei aktuellem Datenbestand, passender ROI/Ausrichtung, intaktem Artefakt und wenigstens einem qualifizierten Modus. Alle bisherigen aktiven Varianten werden gemeinsam ersetzt. Bereits geprüfte Bildmodi dürfen nicht verloren gehen; ältere Kandidaten derselben Datenbasis ersetzen keine neuere aktive Version. Fehler/ungenügende Qualität lassen die bisherige passende Erkennung bestehen. Defekte Artefakte ergeben verständlichen Fehler und Wiederholungsmöglichkeit. Neue Bestätigungen, neue Bilder oder geänderte ROI veranlassen weiteres Lernen; unveränderte Fehlläufe werden nicht endlos automatisch wiederholt.
+
+## Erkennungsbetrieb und Lernpause
+
+recognition_requested speichert den gewünschten Erkennungsbetrieb, analysis_enabled die technische Nutzbarkeit. Neue Kameras wünschen Erkennung standardmäßig an; bei Migration 0006 bleibt eine bestehende Pause erhalten. Nach ROI-/Ausrichtungsänderung wird die alte Version deaktiviert, das Lernen vorgemerkt und ein später passender Lernstand ohne Aktivierungsdialog genutzt. „Erkennung fortsetzen“ beziehungsweise weitere Einstellungen schalten den gewünschten Betrieb um.
+
+„Weiter lernen“ aus stoppt neue automatische Prüfbilder, das Starten wartender automatischer Trainings und die automatische Übernahme. Bereits laufende Trainings dürfen fertig werden; die Übernahme wartet auf Fortsetzen. Die bisherige Erkennung läuft unabhängig weiter. Explizite administrative Uploads/Bestätigungen bleiben möglich und werden bis zum Fortsetzen vorgemerkt. Normale Nutzer verlieren bei ausgeschaltetem Lernen den Trainingszugriff einschließlich Bild-URLs und Änderungen. Unsichere Prognosen während einer Lernpause werden intern skipped protokolliert, ohne neue sichtbare Prüfzeilen oder KPI-Effekt.
+
+## Vertrauen, Übergang und Grenzen
+
+Mindestvertrauen bleibt 50–100 %, Standard 75 %. Confidence ist eine Heuristik aus Streuung, Feature-Abstand und Validierungsfehler, keine kalibrierte Wahrscheinlichkeit. Bei gemeinsamen Lernständen wird der Fehler des tatsächlich erkannten Modus verwendet. Nicht qualifizierte Modi höchstens 45 %, nahezu schwarze/weiße Bilder höchstens 30 %. Modellvorschläge werden niemals ohne menschliche Bestätigung zu Trainings-Wahrheitslabels.
+
+Bestehende manuell aktivierte Versionen und ihre bisherige Tag-/Nachtlogik bleiben bis zum geprüften gemeinsamen Ersatz verfügbar. Bestehende APIs für technische Modellverwaltung bleiben kompatibel, die neue Oberfläche nutzt sie nicht. Historie/Labels/Referenzen werden nicht gelöscht. Downgrade 0006 bei vorhandenen gemeinsamen Lernständen gesperrt, weil ältere Software die getrennte Sicherheitsfreigabe nicht kennt; dafür DB-/ML-Sicherung wiederherstellen.
+
+Synthetische Tests belegen Softwareabläufe. Reale Aufnahmeserien, Licht-/Materialwechsel und Kameraverschiebungen müssen unabhängig geprüft werden. MAE ≤10 Prozentpunkte garantiert keine ±10-Grenze für beliebige Einzelbilder. Echte Segmentierung/Volumenkalibrierung, vollständiges Korrektur-Audit bereits übernommener Werte, technische Frischealarme und vollständige Wiederherstellungsübung bleiben weitere Schritte.
+
+
+## Begrenzter zusätzlicher FTP-Abruf
+
+Der normale Import und die Analyse aktueller Bilder haben Vorrang. Danach startet der bestehende Einzel-Worker einen begrenzten Hilfsprozess je Kamera: höchstens zehn Kandidaten/Downloads, 30 Sekunden einschließlich äußerem Prozesslimit. Keine zusätzliche Dienstinstanz oder Bibliothek. Steuer- und Datensockets erhalten die Restzeit. MLSD/NLST zählen bereits beim Empfang der Zeilen gegen das bestehende Scanlimit. Datumserkennung und konkrete Tagesordner berücksichtigen Kamera-Zeitzone, Jahreswechsel und Sommerzeit; keine rekursive Archivsuche als Ausweichweg. Unbekannte/veraltete FTP-Zeitstempel werden nicht als historische Trainingsreferenz erfunden.
+
+Abgeschlossene Tagesordner und Kandidaten bleiben für den nächsten Zyklus gespeichert. Eine vollständige erschöpfte Auswahl wird höchstens stündlich neu gesucht. Scanlimit/uneindeutige Struktur: 24 Stunden Rückstau, andere Fehler fünf Minuten; geänderte FTP-/Ausrichtungskonfiguration setzt den Abrufkontext zurück. Daten-/Rechteänderungen werden unter Kamerasperre vor Veröffentlichung erneut geprüft; parallele Bestätigung oder Live-Sammlung kann keinen zusätzlichen 51. Platz erzeugen. Normalisierte Inhalts-Hashes schließen auch umbenannte identische Referenzen und verworfene Dateien aus. Download-/Bildvalidierungsgrenzen gelten unverändert.

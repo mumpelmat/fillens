@@ -1,0 +1,91 @@
+# Fillens auf Synology (Container Manager) mit fertigen Images aus der GitHub Container Registry.
+# Anleitung: docs/SYNOLOGY.md. Datenbank und ML-Speicher liegen als Ordner neben dieser Datei.
+name: fillens
+x-app-environment: &app-environment
+  DATABASE_URL: postgresql+psycopg://fillens:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env setzen}@postgres:5432/fillens
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY in .env setzen}
+  DATA_DIR: /data
+  ML_DATA_DIR: /ml
+  COOKIE_SECURE: ${COOKIE_SECURE:-true}
+  SESSION_HOURS: ${SESSION_HOURS:-12}
+  FTP_POLL_SECONDS: ${FTP_POLL_SECONDS:-60}
+  FTP_SETTLE_SECONDS: ${FTP_SETTLE_SECONDS:-30}
+  FTP_TIMEOUT_SECONDS: ${FTP_TIMEOUT_SECONDS:-20}
+  MAX_IMAGE_BYTES: ${MAX_IMAGE_BYTES:-15728640}
+  MAX_SCAN_FILES: ${MAX_SCAN_FILES:-10000}
+  MAX_IMPORTS_PER_CYCLE: ${MAX_IMPORTS_PER_CYCLE:-100}
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: fillens
+      POSTGRES_DB: fillens
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env setzen}
+    volumes:
+      - ./postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U fillens -d fillens"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  ml-init:
+    image: busybox:1.37
+    command: [chown, "10001:10001", /ml]
+    volumes:
+      - ./ml:/ml
+    restart: "no"
+  backend:
+    image: ghcr.io/mumpelmat/fillens-backend:${FILLENS_VERSION:-latest}
+    environment: *app-environment
+    volumes:
+      - image_data:/data:ro
+      - ./ml:/ml
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ml-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+    restart: unless-stopped
+  worker:
+    image: ghcr.io/mumpelmat/fillens-backend:${FILLENS_VERSION:-latest}
+    command: [python, -m, app.worker]
+    environment: *app-environment
+    volumes:
+      - image_data:/data
+      - ./ml:/ml
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -m, app.healthcheck]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    stop_grace_period: 45s
+  frontend:
+    image: ghcr.io/mumpelmat/fillens-frontend:${FILLENS_VERSION:-latest}
+    environment:
+      BACKEND_INTERNAL_URL: http://backend:8000
+      MAX_TRAINING_UPLOAD_BYTES: ${MAX_IMAGE_BYTES:-15728640}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+volumes:
+  # Drei-Bilder-Produktivpuffer: bewusst kein Backup-Ziel
+  image_data:
