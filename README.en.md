@@ -1,4 +1,19 @@
-# Fillens · fill level portal
+<p align="center">
+  <img src="docs/images/logo.svg" alt="fillens" width="240">
+</p>
+
+<p align="center"><strong>Self-hosted fill level portal</strong> for bins, tanks and containers – camera images, local learning and warnings.</p>
+
+<p align="center">
+  <a href="https://github.com/mumpelmat/fillens/actions/workflows/ci.yml"><img src="https://github.com/mumpelmat/fillens/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/mumpelmat/fillens/tags"><img src="https://img.shields.io/github/v/tag/mumpelmat/fillens?label=version&color=1e634d" alt="Version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-1e634d" alt="License AGPL-3.0"></a>
+  <img src="https://img.shields.io/badge/Docker-amd64%20%7C%20arm64-1e634d?logo=docker&logoColor=white" alt="Docker amd64 | arm64">
+</p>
+
+<p align="center"><a href="README.md">Deutsch</a> · <a href="docs/SYNOLOGY.md">Synology guide (German)</a> · <a href="CONTRIBUTING.md">Contributing</a></p>
+
+![Dashboard with fill level, current camera image and history](docs/images/uebersicht.png)
 
 Fillens is a self-hosted portal for monitoring fill levels of bins, tanks and containers using camera images. Cameras upload pictures via FTP/FTPS; Fillens imports them, records fill levels manually or through a locally trained image model, computes fill/consumption rates and sends warnings in the portal and by e-mail. Everything runs on your own hardware, no cloud service involved.
 
@@ -11,6 +26,17 @@ Fillens is a self-hosted portal for monitoring fill levels of bins, tanks and co
 - Manual readings plus a local learning model (polygon ROI, day/night, automatic validation before a new model is used)
 - Fill or consumption mode with smoothed rates, events (emptying/refill) and threshold warnings via portal and SMTP
 - Roles (admin/user), Argon2 passwords, CSRF protection, encrypted FTP/SMTP credentials
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/training.png" alt="Confirm images and train"></td>
+    <td width="50%"><img src="docs/images/anlagen.png" alt="Containers and warning rules"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Confirm images &amp; train the local model</sub></td>
+    <td align="center"><sub>Containers, capacities and warning rules</sub></td>
+  </tr>
+</table>
 
 Stack: Next.js/React/TypeScript frontend, FastAPI + SQLAlchemy backend, Python worker, PostgreSQL 17, Docker Compose.
 

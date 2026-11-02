@@ -1,10 +1,47 @@
-# Fillens · Füllstandsportal
+<p align="center">
+  <img src="docs/images/logo.svg" alt="fillens" width="240">
+</p>
 
-Version **0.5.1**, Stand **01.11.2026**. FTP-/FTPS-Import, Drei-Bilder-Produktivpuffer, Füllen-/Verbrauchsmodus mit geglätteten Raten und Warnungen sowie lokales Training mit Vieleck-ROI und Referenzbildern. Trainingsbilder haben **kein Drei-Bilder-Limit**.
+<p align="center"><strong>Weniger schätzen. Mehr wissen.</strong><br>Selbst gehostetes Füllstandsportal für Behälter, Tanks und Papierkörbe – mit Kamerabildern, lokalem Lernen und Warnungen.</p>
 
-Fillens ist ein selbst gehostetes Füllstandsportal: Kameras legen Bilder per FTP ab, Fillens importiert sie, erfasst Füllstände manuell oder per lokal trainierter Bilderkennung, berechnet Füll-/Verbrauchsraten und warnt per Portal und E-Mail. Empfohlener Betrieb: Docker, z. B. auf einer Synology.
+<p align="center">
+  <a href="https://github.com/mumpelmat/fillens/actions/workflows/ci.yml"><img src="https://github.com/mumpelmat/fillens/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/mumpelmat/fillens/tags"><img src="https://img.shields.io/github/v/tag/mumpelmat/fillens?label=Version&color=1e634d" alt="Version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/Lizenz-AGPL--3.0-1e634d" alt="Lizenz AGPL-3.0"></a>
+  <img src="https://img.shields.io/badge/Docker-amd64%20%7C%20arm64-1e634d?logo=docker&logoColor=white" alt="Docker amd64 | arm64">
+</p>
 
-[English summary](README.en.md) · [Installation auf Synology](docs/SYNOLOGY.md) · [Mitwirken](CONTRIBUTING.md) · Lizenz: [AGPL-3.0](LICENSE)
+<p align="center">
+  <a href="README.en.md">English</a> ·
+  <a href="docs/SYNOLOGY.md">Installation auf Synology</a> ·
+  <a href="#schnellstart-mit-docker">Schnellstart</a> ·
+  <a href="CONTRIBUTING.md">Mitwirken</a>
+</p>
+
+![Übersicht mit Füllstand, aktuellem Kamerabild und Verlauf](docs/images/uebersicht.png)
+
+## Was Fillens macht
+
+Kameras legen Bilder per FTP ab. Fillens importiert sie, erfasst Füllstände manuell oder per lokal trainierter Bilderkennung, berechnet Füll- und Verbrauchsraten und warnt im Portal und per E-Mail. Alles läuft auf eigener Hardware, empfohlen als Docker-Installation z. B. auf einer Synology; es gibt keinen Cloud-Dienst.
+
+- **FTP-/FTPS-Import** mit Erkennung von Datumsordnern, Deduplizierung und Drei-Bilder-Produktivpuffer statt Bildarchiv
+- **Füllen- oder Verbrauchsmodus** mit geglätteten Raten, Ereignissen (Leerung, Nachfüllung) und Verlaufsdiagrammen
+- **Lokales Lernen:** Bildbereich als Vieleck markieren, Bilder bestätigen, getrennte Lernstände für Tag und Nacht; neue Lernstände werden erst nach bestandener Prüfung verwendet. Trainingsbilder haben **kein Drei-Bilder-Limit**.
+- **Warnungen** mit Schwellen und Hysterese im Portal und per SMTP
+- **Rollen** Administrator/Benutzer, Argon2-Passwörter, CSRF-Schutz, verschlüsselte FTP-/SMTP-Zugangsdaten
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/training.png" alt="Bilder bestätigen und lernen"></td>
+    <td width="50%"><img src="docs/images/anlagen.png" alt="Anlagen und Behälter mit Warnregeln"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Bilder bestätigen &amp; lernen</sub></td>
+    <td align="center"><sub>Anlagen, Behälter und Warnregeln</sub></td>
+  </tr>
+</table>
+
+Version **0.5.2**, Stand **02.11.2026**. Änderungen im [Änderungsprotokoll](docs/CHANGELOG.md).
 
 ## Schnellstart mit Docker
 
