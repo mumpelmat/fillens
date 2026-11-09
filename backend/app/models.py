@@ -154,6 +154,8 @@ class Camera(Base):
     learning_enabled: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true"
     )
+    training_mode: Mapped[str] = mapped_column(String(16), default="automatic", server_default="automatic")
+    image_retention_days: Mapped[int] = mapped_column(Integer, default=7, server_default="7")
     learning_generation: Mapped[str] = mapped_column(
         String(36), default=uid, server_default="legacy"
     )
@@ -216,6 +218,8 @@ class ImageBuffer(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     camera_id: Mapped[str] = mapped_column(ForeignKey("cameras.id"), index=True)
     import_id: Mapped[str] = mapped_column(ForeignKey("import_records.id"), unique=True)
+    training_sample_id: Mapped[str | None] = mapped_column(ForeignKey("training_samples.id", ondelete="SET NULL"), index=True)
+    learning_collected: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     filename: Mapped[str] = mapped_column(String(80))
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     timestamp_source: Mapped[str] = mapped_column(String(24))
@@ -294,6 +298,7 @@ class TrainingSample(Base):
     file_hash: Mapped[str] = mapped_column(String(64))
     size_bytes: Mapped[int] = mapped_column(Integer)
     target_fill_level: Mapped[float | None] = mapped_column(Float)
+    rejection_reason: Mapped[str | None] = mapped_column(String(32))
     image_mode: Mapped[str] = mapped_column(String(16), default="unknown")
     series_name: Mapped[str] = mapped_column(String(100))
     approved: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -328,6 +333,7 @@ class ModelVersion(Base):
     learning_generation: Mapped[str] = mapped_column(
         String(36), default="legacy", server_default="legacy"
     )
+    trigger: Mapped[str] = mapped_column(String(16), default="manual", server_default="manual")
     algorithm: Mapped[str] = mapped_column(String(40), default="local_rf_v1")
     image_mode: Mapped[str] = mapped_column(String(16), default="all")
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
@@ -428,6 +434,14 @@ class NotificationRead(Base):
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PasswordReset(Base):
+    __tablename__ = "password_resets"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    password_revision: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class SMTPConfig(Base):
@@ -554,7 +568,8 @@ class LearningRestoreSample(Base):
         ForeignKey("training_samples.id"), primary_key=True, index=True
     )
     file_hash: Mapped[str] = mapped_column(String(64))
-    target_fill_level: Mapped[float] = mapped_column(Float)
+    target_fill_level: Mapped[float | None] = mapped_column(Float)
+    rejection_reason: Mapped[str | None] = mapped_column(String(32))
     image_mode: Mapped[str] = mapped_column(String(16))
     series_name: Mapped[str] = mapped_column(String(100))
     transform_key: Mapped[str] = mapped_column(String(64))

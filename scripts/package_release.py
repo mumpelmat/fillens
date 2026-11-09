@@ -11,17 +11,17 @@ backend_version = re.search(r'^version = "([^"]+)"', (root / "backend/pyproject.
 if not re.fullmatch(r"\d+\.\d+\.\d+", version) or not backend_version or backend_version.group(1) != version:
     raise SystemExit("Frontend- und Backend-Version stimmen nicht überein")
 
-root_files = [".gitignore", ".env.example", "compose.yaml", "README.md", "ARCHITECTURE.md", "ML.md"]
+root_files = [".gitignore", ".env.example", "compose.yaml", "README.md", "README.en.md", "LICENSE", "CONTRIBUTING.md", "SECURITY.md", "ARCHITECTURE.md", "ML.md"]
 excluded = {"node_modules", ".venv", ".next", "__pycache__", ".pytest_cache", ".ruff_cache", "data", ".git"}
 internal_docs = {"docs/AI_SESSION_HANDOFF.md", "docs/PLAN_REVIEW.md", "docs/SOFTWARE_ASSET_MEMO.md"}
-extensions = {".py", ".toml", ".lock", ".ini", ".mako", ".md", ".tsx", ".ts", ".json", ".css", ".mjs", ".svg"}
+extensions = {".py", ".toml", ".lock", ".ini", ".mako", ".md", ".tsx", ".ts", ".json", ".css", ".mjs", ".svg", ".png", ".yaml", ".yml"}
 files = [root / path for path in root_files]
-for directory in ("backend", "frontend", "scripts", "docs"):
+for directory in ("backend", "frontend", "scripts", "docs", "deploy", ".github"):
     for file in (root / directory).rglob("*"):
         relative = file.relative_to(root)
         if set(relative.parts) & excluded or relative.as_posix() in internal_docs or not file.is_file():
             continue
-        if file.suffix in extensions or file.name in {"Dockerfile", ".dockerignore"}:
+        if file.suffix in extensions or file.name in {"Dockerfile", ".dockerignore", ".env.example"}:
             files.append(file)
 files = sorted(set(files))
 manifest = []

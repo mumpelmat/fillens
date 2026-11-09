@@ -51,6 +51,8 @@ def _config(camera: Camera) -> dict:
         "recognition_requested": camera.recognition_requested,
         "analysis_enabled": camera.analysis_enabled,
         "learning_enabled": camera.learning_enabled,
+        "training_mode": camera.training_mode,
+        "image_retention_days": camera.image_retention_days,
         "min_confidence": camera.min_confidence,
         "learning_generation": camera.learning_generation,
     }
@@ -73,7 +75,7 @@ def create_restore_point(db, camera: Camera, user_id: str, reason="manual"):
                 TrainingSample.camera_id == camera.id,
                 TrainingSample.approved.is_(True),
                 TrainingSample.discarded_at.is_(None),
-                TrainingSample.target_fill_level.is_not(None),
+                (TrainingSample.target_fill_level.is_not(None) | TrainingSample.rejection_reason.is_not(None)),
             )
         )
     )
@@ -131,6 +133,7 @@ def create_restore_point(db, camera: Camera, user_id: str, reason="manual"):
                     sample_id=sample.id,
                     file_hash=sample.file_hash,
                     target_fill_level=sample.target_fill_level,
+                    rejection_reason=sample.rejection_reason,
                     image_mode=sample.image_mode,
                     series_name=sample.series_name,
                     transform_key=sample.transform_key,
@@ -185,6 +188,7 @@ def reset_learning(db, camera: Camera, user_id: str):
     ):
         sample.approved = False
         sample.target_fill_level = None
+        sample.rejection_reason = None
         sample.created_by = None
         sample.queue_state = "deferred"
         sample.window_managed = True
@@ -240,6 +244,7 @@ def restore_learning(db, camera: Camera, point: LearningRestorePoint, user_id: s
     ):
         sample.approved = False
         sample.target_fill_level = None
+        sample.rejection_reason = None
         sample.created_by = None
         sample.queue_state = "deferred"
         sample.window_managed = True
@@ -247,6 +252,7 @@ def restore_learning(db, camera: Camera, point: LearningRestorePoint, user_id: s
         sample = db.get(TrainingSample, snapshot.sample_id)
         sample.approved = True
         sample.target_fill_level = snapshot.target_fill_level
+        sample.rejection_reason = snapshot.rejection_reason
         sample.image_mode = snapshot.image_mode
         sample.series_name = snapshot.series_name
         sample.transform_key = snapshot.transform_key
@@ -274,6 +280,8 @@ def restore_learning(db, camera: Camera, point: LearningRestorePoint, user_id: s
     camera.image_flip = config["flip"]
     camera.recognition_requested = config["recognition_requested"]
     camera.learning_enabled = config["learning_enabled"]
+    camera.training_mode = config.get("training_mode", camera.training_mode)
+    camera.image_retention_days = config.get("image_retention_days", camera.image_retention_days)
     camera.min_confidence = config["min_confidence"]
     camera.learning_generation = config["learning_generation"]
     camera.analysis_enabled = bool(model_rows and camera.recognition_requested)

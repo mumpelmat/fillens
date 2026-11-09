@@ -85,26 +85,12 @@ def import_camera(
         camera.last_scan_entries = 0
         db.commit()
 
-        initial_stamps = [
-            remote_time(stamp)
-            for stamp in db.scalars(
-                select(ImportRecord.remote_modified)
-                .join(ImageBuffer, ImageBuffer.import_id == ImportRecord.id)
-                .where(ImageBuffer.camera_id == camera.id)
-            )
-        ]
-        automatic_cutoff = (
-            min(initial_stamps)
-            if camera.analysis_enabled and initial_stamps and all(initial_stamps)
-            else None
-        )
-
         def process(files: list[RemoteFile]) -> None:
             nonlocal imported, attempted
             for remote in sorted(
                 files,
                 key=lambda f: (f.modified, f.path),
-                reverse=automatic_cutoff is None,
+                reverse=True,
             ):
                 if db.scalar(
                     select(ImportRecord.id).where(
@@ -115,25 +101,16 @@ def import_camera(
                     continue
                 if not retry_allowed(db, camera.id, remote):
                     continue
-                retained = list(
-                    db.scalars(
-                        select(ImportRecord.remote_modified)
-                        .join(ImageBuffer, ImageBuffer.import_id == ImportRecord.id)
-                        .where(ImageBuffer.camera_id == camera.id)
-                    )
-                )
-                retained_times = [remote_time(value) for value in retained]
                 modified = remote_time(remote.modified)
-                if automatic_cutoff is not None:
-                    if modified and modified < automatic_cutoff:
+                if modified and modified < utcnow() - timedelta(days=camera.image_retention_days):
+                    # Auch eine länger stille Kamera behält ihre neueste Aufnahme.
+                    latest = db.scalar(select(ImportRecord.remote_modified).join(
+                        ImageBuffer, ImageBuffer.import_id == ImportRecord.id
+                    ).where(ImageBuffer.camera_id == camera.id).order_by(
+                        ImageBuffer.captured_at.desc(), ImageBuffer.imported_at.desc()
+                    ).limit(1))
+                    if latest and remote_time(latest) and modified <= remote_time(latest):
                         continue
-                elif (
-                    len(retained_times) >= 3
-                    and all(retained_times)
-                    and modified
-                    and modified < min(retained_times)
-                ):
-                    continue
                 key = (camera.id, remote.fingerprint)
                 observed.add(key)
                 since = first_seen.setdefault(key, utcnow())

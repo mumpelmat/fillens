@@ -21,7 +21,7 @@ Fillens is a self-hosted portal for monitoring fill levels of bins, tanks and co
 
 ## Features
 
-- FTP/FTPS import with date-folder detection, deduplication and a three-image production buffer (no image archive)
+- FTP/FTPS import with date-folder detection, deduplication and configurable retention per camera (seven days by default, no image-count limit)
 - Containers with capacity in litres or m³, one camera per container
 - Manual readings plus a local learning model (polygon ROI, day/night, automatic validation before a new model is used)
 - Fill or consumption mode with smoothed rates, events (emptying/refill) and threshold warnings via portal and SMTP
@@ -66,3 +66,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Please report security issues privately 
 ## License
 
 [GNU Affero General Public License v3.0 or later](LICENSE). If you run a modified version as a network service, you must offer its source code to its users.
+
+### Continuous collection and training controls
+
+With learning enabled, imported images enter the review queue even without a model or ROI. Admins can upload images, choose automatic or manual training, and set automatic-image retention to 1–365 days (default seven). Confirmed positive/negative examples and uploads are retained. The latest camera preview stays available. Background updates announce new images without replacing the image being edited. Back up PostgreSQL and both image volumes before migration 0011; the new retention policy also applies to existing unreviewed automatic images.
+
+## Updating an existing installation to 0.6.0
+
+Follow the [upgrade guide](docs/UPDATE.md) before restarting. Keep the existing `.env`, encryption key, Compose project and volumes. Back up the database and both image stores while backend and worker are stopped. Pin `FILLENS_VERSION=0.6.0` for prebuilt images; source installations check out `v0.6.0` and rebuild. Migrations 0009–0011 run automatically. Existing accounts, camera assignments, confirmed examples and models are preserved; unreviewed automatic images use seven-day retention by default. A rollback requires the matching complete backup.

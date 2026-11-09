@@ -87,5 +87,5 @@ services:
       retries: 3
     restart: unless-stopped
 volumes:
-  # Drei-Bilder-Produktivpuffer: bewusst kein Backup-Ziel
+  # Kamerabilder: zusammen mit Datenbank und ML-Bestand sichern
   image_data:

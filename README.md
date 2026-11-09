@@ -24,7 +24,7 @@
 
 Kameras legen Bilder per FTP ab. Fillens importiert sie, erfasst Füllstände manuell oder per lokal trainierter Bilderkennung, berechnet Füll- und Verbrauchsraten und warnt im Portal und per E-Mail. Alles läuft auf eigener Hardware, empfohlen als Docker-Installation z. B. auf einer Synology; es gibt keinen Cloud-Dienst.
 
-- **FTP-/FTPS-Import** mit Erkennung von Datumsordnern, Deduplizierung und Drei-Bilder-Produktivpuffer statt Bildarchiv
+- **FTP-/FTPS-Import** mit Datumsordnersuche, Deduplizierung und Aufbewahrung je Kamera (standardmäßig sieben Tage, kein Bildanzahllimit)
 - **Füllen- oder Verbrauchsmodus** mit geglätteten Raten, Ereignissen (Leerung, Nachfüllung) und Verlaufsdiagrammen
 - **Lokales Lernen:** Bildbereich als Vieleck markieren, Bilder bestätigen, getrennte Lernstände für Tag und Nacht; neue Lernstände werden erst nach bestandener Prüfung verwendet. Trainingsbilder haben **kein Drei-Bilder-Limit**.
 - **Warnungen** mit Schwellen und Hysterese im Portal und per SMTP
@@ -41,7 +41,7 @@ Kameras legen Bilder per FTP ab. Fillens importiert sie, erfasst Füllstände ma
   </tr>
 </table>
 
-Version **0.5.2**, Stand **02.11.2026**. Änderungen im [Änderungsprotokoll](docs/CHANGELOG.md).
+Version **0.6.0**, Stand **09.11.2026**. Änderungen im [Änderungsprotokoll](docs/CHANGELOG.md).
 
 ## Schnellstart mit Docker
 
@@ -84,7 +84,7 @@ Pro importiertem Produktivbild ist ein effektiver Messwert möglich. Unsichere M
 7. **Weiter lernen** aus stoppt neue Prüfbilder, neue automatische Trainings und automatische Übernahmen. Die bestehende Erkennung bleibt unabhängig nutzbar; laufende Trainings dürfen fertig werden. Gespeicherte Bilder und explizite Bestätigungen bleiben erhalten.
 8. Unter **Weitere Einstellungen** kann die automatische Erkennung separat pausiert und das Mindestvertrauen geändert werden. Eine zuvor pausierte Erkennung bleibt beim Upgrade pausiert und lässt sich über **Erkennung fortsetzen** einschalten.
 
-Trainingsbilder haben **kein Drei-Bilder-Limit**. Sie und Referenzkopien bleiben im separaten `ml_data`-Volume bis zur ausdrücklichen Löschung. Pro Datei gelten Datei-/Pixelgrenzen. Bestätigte menschliche Vorgaben werden zum Lernen genutzt; Modellschätzungen werden nicht selbst als Wahrheitslabels bestätigt.
+Kamera- und Lernbilder haben kein festes Anzahl-Limit. Unbewertete automatische Bilder bleiben standardmäßig sieben Tage ab lokaler Aufnahme erhalten; Admins können 1–365 Tage je Kamera wählen. Die neueste Kameravorschau, bestätigte Lernbilder und manuelle Uploads bleiben erhalten. Menschliche Bewertungen dienen als Trainingsvorgaben; Modellschätzungen bestätigen sich nicht selbst.
 
 Ein neuer Lernstand ersetzt den bisherigen erst nach bestandener Prüfung, mit aktueller Datenbasis und passendem Bildbereich. Fehler oder nicht ausreichende Daten erhalten die bisherige passende Erkennung. Bereits geprüfte Tages-/Nachtfreigaben werden durch einen Wechsel nicht verloren. Bestehende Versionen bleiben intern als Historie erhalten.
 
@@ -110,7 +110,7 @@ Leerungen/Nachfüllungen unterbrechen Betriebszyklen. Admins können unter Dashb
 
 Unter **Anlagen → Warnregeln** den Behälter auswählen und getrennte Schwellen einstellen: Füllen standardmäßig Hinweis ab 80 %/Warnung ab 90 %, Verbrauch Hinweis bis 20 %/Warnung bis 10 %. Zwei Prozentpunkte Hysterese und einmalige Meldungen pro Stufe/Alarmphase verhindern Grenzwertflattern. Ein direkter Sprung zur Warnung erzeugt beide Portalstufen, jedoch nur eine E-Mail pro Empfänger. **Meldungen** zeigt aktive Meldungen, Historie und persönlichen Gelesen-Status. Keine Restzeitprognose.
 
-Für E-Mail unter **System → E-Mail-Versand (SMTP)** Server, Port, Verschlüsselung und Absender eintragen, bei Bedarf Benutzer/Passwort. Ein leeres Passwort behält das vorhandene; eine eigene Option entfernt es. Danach Empfänger unter den Behälter-Warnregeln hinterlegen und Versand aktivieren. Ohne vollständige SMTP-Konfiguration funktionieren Portalwarnungen weiter. Der Worker versendet aus der Outbox mit bis zu fünf Versuchen; Admins sehen Versand-/Fehlerstatus bei der jeweiligen Meldung. SMTP wird ausschließlich beim tatsächlichen Worker-Versand kontaktiert. Bei Abbruch zwischen Zustellung und DB-Bestätigung ist eine doppelte Zustellung möglich.
+Für E-Mail unter **System → E-Mail-Versand (SMTP)** Server, Port, Verschlüsselung und Absender eintragen, bei Bedarf Benutzer/Passwort. Ein leeres Passwort behält das vorhandene; eine eigene Option entfernt es. Danach Empfänger unter den Behälter-Warnregeln hinterlegen und Versand aktivieren. Ohne vollständige SMTP-Konfiguration funktionieren Portalwarnungen weiter. Der Worker versendet aus der Outbox mit bis zu fünf Versuchen; Admins sehen Versand-/Fehlerstatus bei der jeweiligen Meldung. Warnmails werden beim tatsächlichen Worker-Versand verschickt; angeforderte Passwort-Rücksetzcodes werden unabhängig davon über eine begrenzte Hintergrundaufgabe gesendet. Bei Abbruch zwischen Zustellung und DB-Bestätigung ist eine doppelte Zustellung möglich.
 
 ## Konfiguration
 
@@ -176,7 +176,7 @@ Zeigt der Root bereits auf ein Jahr (z. B. `/2026`), erkennt die Automatik statt
 
 Auch der Kontrollscan folgt der Datumsstruktur: Er liest Jahres-/Monats-/Tagesverzeichnisse und prüft Bildlisten nur in seit dem letzten Kontrolllauf geänderten Tagesordnern. Zusätzlich werden drei alte Tagesordner rotierend als Stichprobe geprüft, falls ein Server Ordnerzeitstempel nicht zuverlässig aktualisiert. Ein komplettes Durchlaufen aller historischen Bildlisten findet im Datumsmodus nicht statt. Ohne zuverlässige Ordnerzeitstempel können spät ersetzte Dateien außerhalb des Tagesfensters daher erst bei einer späteren Stichprobe auffallen.
 
-Neue Dateien werden nach FTP-Zeitstempel absteigend geprüft. Ein vollständiger Puffer wird nicht mit eindeutig älteren FTP-Dateien erneut heruntergeladen; nach Bildvalidierung bleiben die drei neuesten Aufnahmen erhalten. Kontrollscans können ältere Metadaten prüfen, ohne das aktuelle Bild durch ältere Archivbilder zu ersetzen. Unveränderte Datei-Metadaten bleiben dieselbe technische Erkennungsgrenze wie bisher.
+Neue Dateien werden nach FTP-Zeitstempel absteigend geprüft. Auch verspätet eintreffende Dateien innerhalb der eingestellten Aufbewahrungsdauer werden importiert. Ältere Archivdateien werden übersprungen, sofern sie nicht die neueste verfügbare Vorschau einer länger stillen Kamera verbessern. Aufnahmezeit und lokale Importzeit werden getrennt gespeichert.
 
 Das **Worker-Symbol oben im Portal** und die **Import-Worker-Karte unter System** drehen sich während tatsächlicher Arbeit: Verbindung, Erkennung, Suche, Kontrollscan, Download oder Speicherung. Der Admin-Status aktualisiert sich alle zwei Sekunden, die eigentlichen Portal-/Bilddaten weiterhin alle 30 Sekunden. Kurze Vorgänge zwischen zwei Statusabfragen können unbeobachtet bleiben. Ohne frisches Lebenszeichen wird keine Arbeitsanimation angezeigt. Ein separates Lebenszeichen alle fünf Sekunden hält lange Scans als erreichbar.
 
@@ -203,11 +203,15 @@ Rohe Serverantworten werden weder angezeigt noch protokolliert. Ein manueller Ne
 - Neue Dateiversionen werden anhand von Pfad, Größe und FTP-Zeitstempel erkannt. Nach dem Download prüft SHA256 auf bereits bekannte Inhalte, auch nach der Bildlöschung.
 - Größe und Zeitstempel werden vor und nach dem Transfer verglichen. Bei fehlendem FTP-Zeitstempel wird zunächst die konfigurierbare Wartezeit beobachtet. Ein Server, der Inhalte ohne Änderung von Größe/Zeitstempel ersetzt, kann über diese Metadaten nicht zuverlässig erkannt werden.
 - Zeitpriorität: EXIF `DateTimeOriginal`, FTP-Zeitstempel in UTC, Importzeit. Ein Dateinamen-Parser ist laut Plan optional und noch nicht enthalten. EXIF ohne Offset verwendet die konfigurierte Kamera-Zeitzone; bei doppeldeutiger Winterzeit gilt `fold=0`.
-- Höchstens drei **neueste Aufnahmen** pro Kamera. Vor dem Schreiben einer neueren vierten Aufnahme wird die älteste lokale Datei gelöscht. Später gelesene alte Archivbilder verdrängen keine neueren Aufnahmen.
+- Keine Begrenzung auf drei oder 50 Bilder. Die Aufbewahrungsdauer je Kamera steuert die Bereinigung automatisch gesammelter, unbestätigter Referenzen; die neueste Aufnahme bleibt sichtbar.
 - Downloads werden begrenzt im Arbeitsspeicher validiert. Es entsteht keine zusätzliche temporäre Bildhistorie. Ein Worker besitzt Datei- und PostgreSQL-Sperre. Beim nächsten Scan werden verwaiste Dateien/Datensätze bereinigt.
 - Das dauerhafte Importjournal enthält nur Metadaten, Hash und Status. Messwerte verweisen darauf; sie besitzen keinen löschabhängigen Fremdschlüssel auf den Bildpuffer.
-- Der Import ist **lesend gegenüber dem FTP-Server**. Die Grenze von drei Bildern gilt für den lokalen Anwendungsspeicher. Die Aufbewahrung auf Kamera/FTP-Server wird separat konfiguriert.
-- Kein Archiv des Produktivpuffers und keine externen KI-Dienste. Der separate Trainingsspeicher sammelt bei eingeschaltetem Lernen Referenzkopien ohne Drei-Bilder-Limit; diese bleiben bis zur ausdrücklichen Löschung erhalten. Proxy/CDN darf Bild- und API-Antworten mit `Cache-Control: no-store` nicht archivieren.
+- Der Import ist **lesend gegenüber dem FTP-Server**. Die lokale Aufbewahrung ist unabhängig von der Aufbewahrung auf Kamera/FTP-Server.
+- Keine externen KI-Dienste. Bestätigte positive/negative Lernbilder und manuelle Uploads bleiben im separaten Trainingsspeicher dauerhaft erhalten; unbewertete automatische Kopien unterliegen der eingestellten Aufbewahrung. Proxy/CDN darf Bild- und API-Antworten mit `Cache-Control: no-store` nicht archivieren.
+
+## Dashboard und Messungen
+
+**Alle** zeigt die Behälter gemeinsam mit großen Kamerabildern und getrennten Kurzverläufen. Die Zeitraumwahl gilt für alle Diagramme. Ein Behälter-Reiter oder **Messungen ansehen** öffnet Bild, Kennzahlen, Verlauf, Messwerttabelle und Ereignisse in einer gemeinsamen Ansicht. Administratoren erreichen über **Einstellungen** direkt die bestehenden Behälter-, Kamera- und Warnregel-Einstellungen.
 
 ## Betrieb, Migrationen und Fehlerdiagnose
 
@@ -219,28 +223,21 @@ docker compose exec backend alembic upgrade head
 docker compose exec backend python -m app.cli reset-password --email admin@firma.de
 ```
 
+Auf der Anmeldung führt **Passwort vergessen?** bei eingerichtetem SMTP zu einer E-Mail mit einem Einmalcode. Der Code gilt 30 Minuten und wird unter **Ich habe bereits einen Code** zusammen mit dem neuen Passwort eingegeben. Auch rein lokale Installationen benötigen dafür keine öffentliche URL. Ohne SMTP bleibt der oben gezeigte CLI-Befehl nutzbar. Nach einem Versandfehler oder Serverneustart gegebenenfalls erneut anfordern; keine automatische Wiederholung von Rücksetzmails.
+
 Ein Passwortreset widerruft alle Sitzungen dieses Benutzers. Kontodeaktivierung beendet ebenfalls alle Sitzungen. Das eigene Administratorkonto kann im Portal nicht deaktiviert werden. Anmeldung ist nach fünf Versuchen je Konto in 15 Minuten gesperrt; es gibt keine offene Registrierung.
 
-System zeigt Arbeitsphase und Worker-Lebenszeichen, letzte Scans/Importe, Suchstrategie, Fehlercodes und Puffergröße. Ein aktuelles Lebenszeichen bestätigt den Worker, keine frischen Kamerabilder: Technische Frische-/Kamerawarnungen bleiben ein weiterer Schritt; Füllstandsbenachrichtigungen sind umgesetzt. FTP-Verbindungen werden nach Zuweisung automatisch im Worker geprüft. Fehlertexte sind bewusst ohne Zugangsdaten; Logs enthalten Ereignistyp, Kamera-ID, sicheren Fehlercode und Fehlerklasse.
+System zeigt Arbeitsphase und Worker-Lebenszeichen, letzte Scans/Importe, Suchstrategie, Fehlercodes und Puffergröße. Ein aktuelles Lebenszeichen bestätigt den Worker, keine frischen Kamerabilder: Technische Frische-/Kamerawarnungen bleiben ein weiterer Schritt; Füllstandsbenachrichtigungen sind umgesetzt. In den FTP-Einstellungen prüft **Verbindung testen** die aktuellen Zugangsdaten und den Root. Im Kameradialog prüft **FTP-Ordner testen** zusätzlich das Kamera-Unterverzeichnis. Beide Tests zeigen Ordner und Bilddateien ausschließlich auf erster Ebene, ohne etwas zu speichern oder Bilder herunterzuladen. Grenzen und Fehler werden ausdrücklich gemeldet. Der reguläre Import prüft die zugewiesenen Verbindungen weiterhin im Worker. Fehlertexte sind bewusst ohne Zugangsdaten; Logs enthalten Ereignistyp, Kamera-ID, sicheren Fehlercode und Fehlerklasse.
 
 Ein einzelner Worker ist vorgesehen. Ein zweiter wird abgewiesen. Ein Scan erfolgt pro Kamera nacheinander; bei vielen Kameras/Dateien verlängert sich der Zyklus. Den FTP-Root möglichst eng wählen und Suchmodus/Scanlimits passend setzen. FTP-Server sollten nur lesbare Kameraverzeichnisse freigeben; Symlinks vermeiden. Das Lebenszeichen läuft unabhängig vom Scan; Netzwerkfehler der Datenbank können es dennoch unterbrechen.
 
 ## Backup und Update
 
-**Datenbank, Konfigurationsschlüssel und bei Bedarf das separate ML-Volume sichern. Keine Produktivbild-Volumes archivieren.**
+Für bestehende Installationen gilt die [Update-Anleitung für Version 0.6.0](docs/UPDATE.md), mit getrennten Schritten für fertige Images und lokale Quellcode-Builds.
 
-```bash
-mkdir -p backups
-chmod 700 backups
-docker compose exec -T postgres pg_dump -U fillens -d fillens -Fc > backups/fillens.dump
-chmod 600 backups/fillens.dump
-```
+**Datenbank, `.env` mit Fernet-Schlüssel, Compose-Konfiguration und beide Bildbestände (`image_data` und `ml_data` beziehungsweise `ml/`) zusammen sichern.** Backend und Worker müssen während der Sicherung gestoppt sein, damit Datenbank und Dateien zusammenpassen. Ohne Fernet-Schlüssel sind gespeicherte FTP-/SMTP-Zugangsdaten nicht mehr lesbar.
 
-`.env` mit dem Fernet-Schlüssel gesondert verschlüsselt und zugriffsbeschränkt sichern. Ohne diesen Schlüssel sind gespeicherte FTP-/SMTP-Passwörter unlesbar; sie müssen dann neu eingetragen werden. Ein Schlüsselwechsel erfordert eine geplante Neuverschlüsselung; dafür gibt es noch keinen automatischen Ablauf.
-
-Wiederherstellung in eine leere, passend konfigurierte Installation: Worker und Backend stoppen, dann `pg_restore -U fillens -d fillens --clean --if-exists` über den PostgreSQL-Container ausführen. Anschließend Services starten. Der Bildpuffer wird aus neuen FTP-Importen aufgebaut. Trainingsbilder und Modellartefakte separat aus dem ML-Volume-Backup wiederherstellen; ohne Artefakt ist ein DB-seitig aktiv markiertes Modell nicht ausführbar. Das ML-Volume ist bewusst kein Produktivbild-Backup. ML-Backups nur ohne laufende Trainings-/Upload-Schreibzugriffe erstellen. Ein vollständiger Wiederherstellungslauf ist noch zu prüfen.
-
-Vor Updates Backup erzeugen, neue Quellen einspielen und `docker compose up -d --build` ausführen. Migrationen werden automatisch angewendet. Datenbank-Downgrades nur nach Prüfung der jeweiligen Migration und mit Backup; sie können Daten löschen. Migration 0006 sperrt ein Downgrade, sobald gemeinsame Lernstände vorhanden sind; ältere Software kennt deren Tag-/Nachtfreigaben nicht. Dann die passende DB-/ML-Sicherung wiederherstellen. `docker compose down` erhält Volumes, `down -v` löscht sie und ist kein Update-Schritt.
+Migrationen werden beim Backend-Start automatisch angewendet. Konten, Zuordnungen und bestätigte Lernbilder bleiben erhalten. Die neue Aufbewahrung gilt auch für vorhandene unbewertete automatische Bilder. Für einen Rückwechsel eine vollständige Sicherung passend zur alten Software wiederherstellen; `docker compose down -v` ist kein Update-Schritt.
 
 ## Lokale Entwicklung
 
@@ -287,12 +284,12 @@ Spezifikation: [docs/SOFTWARE_SPEC.md](docs/SOFTWARE_SPEC.md). Änderungen: [doc
 
 ## Backup des Trainingsspeichers
 
-Das Docker-Volume `fillens_ml_data` enthält die ausdrücklich gespeicherten Trainingsbilder und die Modellartefakte. Dieses Volume zusätzlich zu Datenbank und Fernet-Schlüssel in das eigene Backup einbeziehen. Dafür Trainingsjobs abschließen lassen und Uploads/Worker-Schreibzugriffe unterbrechen; konsistente Wiederherstellung umfasst DB und ML-Volume desselben Sicherungsstands. `/data` bzw. `fillens_image_data` bleibt vom Backup ausgeschlossen. Der Restore-Ablauf mit ML-Volume ist auf der Zielinstallation noch zu erproben.
+Das Docker-Volume `fillens_ml_data` enthält Lernbilder und Modellartefakte; auf Synology liegt es als Ordner `ml/` vor. Zusätzlich `image_data`, Datenbank und Konfiguration konsistent sichern, wie in [docs/UPDATE.md](docs/UPDATE.md) beschrieben. Die Wiederherstellung auf der eigenen Zielinstallation vor produktiven Updates erproben.
 
 
-## Ergänzungen 0.5.1: Sammlung und Nutzerprüfung
+## Sammlung und Nutzerprüfung
 
-Bei „Weiter lernen“ sammelt der Worker bis zu **50 offene automatische Prüfbilder je Behälter**, zusätzlich aus den letzten **168 Stunden** auf dem FTP. Nach Bestätigen oder Verwerfen wird ergänzt; bestätigte Bilder und administrative Uploads zählen nicht zum Limit. Zeitlich verteilte Auswahl statt Vollarchivscan, höchstens zehn zusätzliche Downloads und 30 Sekunden je Kamerazyklus. Der Produktivpuffer bleibt auf drei Bilder begrenzt. Historische Trainingsbilder erzeugen keine rückwirkenden Messungen oder Warnungen.
+Bei „Weiter lernen“ sichert der Worker jedes neue importierte Bild sofort als Lernreferenz, auch ohne fertiges Modell, ROI oder eingeschaltete Erkennung. Vorhandene lokale Bilder werden beim Einschalten nachgeholt. Die ergänzende FTP-Nachsammlung unterstützt Datumsordner und sonstige Verzeichnisstrukturen, maximal zehn Downloads und 30 Sekunden je Kamera. Historische Trainingsabrufe erzeugen keine rückwirkenden Messungen. Die früheren Grenzen von drei Kamerabildern und 50 offenen Lernbildern sind aufgehoben.
 
 Normale Nutzer sehen Training nur für Behälter mit eingeschaltetem Lernen. Sie dürfen vorhandene Bilder ansehen, Füllstände bestätigen/nachbearbeiten und offene Bilder verwerfen. Upload, Lernschalter, Bildbereich, Bildmodus/Aufnahmegruppe, Modellverwaltung und technische Einstellungen bleiben beim Admin. Ist alles pausiert, verschwindet der Reiter; direkte Trainings-/Referenzzugriffe werden ebenfalls abgewiesen.
 
@@ -307,3 +304,15 @@ Beiträge sind willkommen. Ablauf, Entwicklungsumgebung und Commit-Regeln (deuts
 ## Lizenz
 
 Fillens steht unter der [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-or-later). Wer eine veränderte Fassung als Netzwerkdienst betreibt, muss deren Quellcode den Nutzern zugänglich machen; das Portal verlinkt dafür im Fuß- und Anmeldebereich auf den Quellcode. Drittanbieterabhängigkeiten stehen unter ihren eigenen Lizenzen.
+
+### Ungeeignete Bilder lernen
+
+Im Training ein Bild auswählen, den Grund (z. B. **Deckel zu**) angeben und **Als ungeeignet lernen** drücken. Es bleibt als bestätigtes Gegenbeispiel ohne Füllstand erhalten. **Nur verwerfen** entfernt ein Bild ohne Training. Unter „Bestätigt“ lassen sich Bewertungen korrigieren. Bereits gelöschte Bilder können nicht nachträglich trainiert werden.
+
+Die Erkennung benötigt messbare und ungeeignete Beispiele aus mehreren unabhängigen Aufnahmegruppen. Der Lernstatus zeigt, für welche Bildmodi automatisches Verwerfen freigegeben ist. Erkannte ungeeignete Bilder erzeugen keinen Messwert und können bei eingeschaltetem Lernen im begrenzten Prüffenster kontrolliert werden. Bereits gespeicherte Messwerte bleiben bei einer späteren Neubewertung erhalten.
+
+### Laufend sammeln, Training steuern
+
+Unter **Training** stellen Admins je Kamera die Aufbewahrung automatischer unbewerteter Bilder (1–365 Tage, Standard sieben) und **Automatisch trainieren / Training manuell starten** ein. Manuelle Uploads und bestätigte positive/negative Lernbilder bleiben erhalten. **Training starten** verwendet den aktuellen bestätigten Bestand und dieselben Qualitätsprüfungen wie die Automatik. Ein bereits laufendes Training darf bei einem Moduswechsel fertig werden.
+
+Die aktuelle Kameravorschau bleibt sichtbar. Neue Bilder werden während einer Eingabe angekündigt; **Neueste Bilder anzeigen** wechselt ausdrücklich zur neuen Seite. Aufnahme- und Importzeit werden getrennt angezeigt. Bei Verkürzung der Aufbewahrung wird vor dem Speichern angezeigt, wie viele unbewertete Lernbilder betroffen sind. Beim Update DB sowie `image_data` und `ml_data` sichern: Die neue Bereinigung gilt auch für bestehende unbewertete automatische Bilder.

@@ -975,6 +975,7 @@ tbody tr:last-child td {
   color: inherit;
 }
 .modal {
+  margin: auto;
   padding: 0;
   border: 1px solid #dde5d6;
   border-radius: 14px;

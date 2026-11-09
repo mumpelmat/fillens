@@ -104,7 +104,7 @@ def test_auto_detection_caches_prefix_and_skips_archive(
     with SessionLocal() as db:
         camera = camera_connection(db, container, port)
         assert (
-            import_camera(db, camera, {}, lambda phase, *_: phases.append(phase)) == 3
+            import_camera(db, camera, {}, lambda phase, *_: phases.append(phase)) == 4
         )
         assert camera.detected_date_pattern == "camera/events/YYYY/MM/TT"
         assert "camera/events/2020/01/01" not in calls
@@ -116,7 +116,7 @@ def test_auto_detection_caches_prefix_and_skips_archive(
         assert import_camera(db, camera, {}) == 1
         assert "." not in calls and "camera/events" not in calls
         assert "camera/events/2020/01/01" not in calls
-        assert len(list(db.scalars(select(ImageBuffer)))) == 3
+        assert len(list(db.scalars(select(ImageBuffer)))) == 5
 
 
 def test_year_rollover_and_explicit_suffix(container, ftp_tree, monkeypatch):

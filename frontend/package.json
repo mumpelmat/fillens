@@ -1,9 +1,10 @@
 {
   "name": "fillens-portal",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "scripts": {
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",

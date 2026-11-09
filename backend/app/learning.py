@@ -18,6 +18,7 @@ def dataset_snapshot(samples):
             "id": s.id,
             "hash": s.file_hash,
             "target": s.target_fill_level,
+            **({"rejection_reason": s.rejection_reason} if s.rejection_reason else {}),
             "series": s.series_name,
             "image_mode": s.image_mode,
         }
@@ -67,7 +68,7 @@ def adopt_ready_models():
             if not camera.learning_enabled or not camera.roi_json:
                 continue
             current = fingerprint(
-                camera_config(camera), dataset_snapshot(eligible_samples(db, camera))
+                camera_config(camera), dataset_snapshot(eligible_samples(db, camera, include_unusable=True))
             )
             active = list(
                 db.scalars(
@@ -116,6 +117,11 @@ def adopt_ready_models():
                     continue
                 metrics = model.metrics_json or {}
                 reports = metrics.get("mode_quality", {})
+                rejection_ready = {mode for mode, report in metrics.get("unusable_quality", {}).items() if report.get("ready")}
+                previous_rejection_ready = {mode for previous in active if compatible(camera, previous)
+                    for mode, report in (previous.metrics_json or {}).get("unusable_quality", {}).items() if report.get("ready")}
+                if not previous_rejection_ready.issubset(rejection_ready):
+                    continue
                 if model.algorithm == "local_geometry_v2" and required:
                     safe = all(
                         reports.get(mode, {}).get("challenger_safe", False)
@@ -124,7 +130,14 @@ def adopt_ready_models():
                     improved = metrics.get("challenger_passed", False) or bool(
                         modes - required
                     )
-                    if not safe or not improved:
+                    rejection_improved = bool(rejection_ready) and all(
+                        reports.get(mode, {}).get("mae_percent_points") is not None
+                        and reports[mode]["mae_percent_points"] <= old["mae_percent_points"] + 1
+                        for previous in active if compatible(camera, previous)
+                        for mode, old in (previous.metrics_json or {}).get("mode_quality", {}).items()
+                        if old.get("ready") and old.get("mae_percent_points") is not None
+                    )
+                    if not safe or not (improved or rejection_improved):
                         continue
                 path = model_path(model)
                 try:
@@ -151,11 +164,12 @@ def adopt_ready_models():
 def learning_summary(db, camera):
     from .ml_service import compatible, eligible_samples, training_ready
 
-    selected = eligible_samples(db, camera)
+    selected = eligible_samples(db, camera, include_unusable=True)
     models = list(
         db.scalars(
             select(ModelVersion)
             .where(ModelVersion.camera_id == camera.id)
+            .where(ModelVersion.status != "cancelled")
             .order_by(ModelVersion.created_at.desc(), ModelVersion.id.desc())
         )
     )
@@ -179,7 +193,7 @@ def learning_summary(db, camera):
     )
     reports = {}
     for mode in MODES:
-        samples = [s for s in selected if s.image_mode == mode]
+        samples = [s for s in selected if s.image_mode == mode and not s.rejection_reason]
         metric = (
             (matching.metrics_json or {}).get("mode_quality", {}).get(mode, {})
             if matching
@@ -248,6 +262,9 @@ def learning_summary(db, camera):
             "Lernstand wird aktualisiert",
             "Du kannst weitere Bilder bestätigen.",
         )
+    elif camera.training_mode == "manual" and camera.learning_dirty:
+        state, label, hint = ("manual_ready", "Training wartet auf deinen Start",
+                              "Bestätigte Bewertungen sind gespeichert. Ein Admin kann das Training starten.")
     elif camera.learning_dirty:
         state, label, hint = (
             (
@@ -280,7 +297,7 @@ def learning_summary(db, camera):
             "Weitere Bilder bestätigen",
             "Verschiedene Füllstände aus getrennten Aufnahmen helfen beim Lernen.",
         )
-    if state not in ("paused", "needs_roi", "failed", "waiting"):
+    if state not in ("paused", "needs_roi", "failed", "waiting", "manual_ready"):
         if not ready:
             hint = "Für Tag und Nacht verschiedene Füllstände aus getrennten Aufnahmen bestätigen."
         elif "night_ir" not in ready:
@@ -288,6 +305,8 @@ def learning_summary(db, camera):
         elif "day" not in ready:
             hint = "Für Tag noch Bilder bestätigen."
     return {
+        "can_train": bool(camera.learning_enabled and training_ready(selected) and camera.learning_dirty and not any(m.status in ("queued", "running") for m in models)),
+        "training_running": any(m.status == "running" for m in models),
         "state": state,
         "label": label,
         "hint": hint,
@@ -301,4 +320,11 @@ def learning_summary(db, camera):
         ),
         "approved_count": len(selected),
         "has_active_recognition": bool(active and camera.analysis_enabled),
+        "unusable": {
+            "approved_count": sum(bool(s.rejection_reason) for s in selected),
+            "ready_modes": sorted({mode for m in active
+                for mode, report in (m.metrics_json or {}).get("unusable_quality", {}).items()
+                if report.get("ready")}),
+            "modes": (matching.metrics_json or {}).get("unusable_quality", {}) if matching else {},
+        },
     }

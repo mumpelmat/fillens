@@ -155,6 +155,15 @@ export type FTPConnection = {
   root_path: string;
   has_password: boolean;
 };
+export type FTPTestResult = {
+  path: string;
+  connected: boolean;
+  listed: boolean;
+  folders: number | null;
+  images: number | null;
+  error_code: string | null;
+  message: string;
+};
 export type Status = {
   database: string;
   worker: string;

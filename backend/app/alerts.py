@@ -132,6 +132,11 @@ def send_one(config: SMTPConfig, notification: Notification, recipient: str) -> 
     message.set_content(
         f"{label}: {notification.container_name}\nModus: {mode}\nMesszeit: {aware(notification.measured_at).isoformat()}\nFüllstand: {notification.fill_level:g} %\nSchwelle: {notification.threshold:g} %\n"
     )
+    deliver_message(config, message)
+
+
+def deliver_message(config, message: EmailMessage) -> None:
+    """Gemeinsamer SMTP-Transport für Warnungen und Kontowiederherstellung."""
     context = ssl.create_default_context()
     smtp_class = smtplib.SMTP_SSL if config.encryption == "ssl" else smtplib.SMTP
     kwargs = {"timeout": 5}

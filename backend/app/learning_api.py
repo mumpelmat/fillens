@@ -27,6 +27,64 @@ class Confirm(Input):
     series_name: str | None = Field(default=None, min_length=1, max_length=100)
 
 
+class Unusable(Input):
+    reason: Literal["lid_closed", "obstructed", "unusable"]
+    image_mode: Literal["day", "night_ir", "unknown"] | None = None
+    series_name: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+@router.post("/cameras/{camera_id}/queue/{item_id}/unusable")
+def learn_unusable(camera_id: str, item_id: str, data: Unusable, db: DB, user: CurrentUser):
+    from .ml_service import capture_review_sample, sample_path
+    from .services import image_path
+    from .training_store import rebalance_window
+    from .vision import transform_key
+
+    camera = training_camera(db, camera_id, user, lock=True)
+    if user.role != "admin" and (data.image_mode is not None or data.series_name is not None):
+        raise HTTPException(403, "Bildmodus und Aufnahmegruppe dürfen nur Admins ändern.")
+    kind, _, key = item_id.partition("_")
+    sample = db.get(TrainingSample, key) if kind == "sample" else None
+    legacy = db.get(AnalysisResult, key) if kind == "analysis" else None
+    if legacy and legacy.camera_id == camera_id and legacy.review_visible:
+        image = db.scalar(select(ImageBuffer).where(ImageBuffer.import_id == legacy.source_import_id))
+        if not image or not image_path(image).is_file():
+            raise HTTPException(410, "Referenzbild ist nicht mehr vorhanden.")
+        sample = capture_review_sample(db, camera, image, explicit=True)
+        legacy.review_sample_id = sample.id if sample else None
+    if not sample or sample.camera_id != camera_id:
+        raise HTTPException(404, "Bild nicht gefunden.")
+    if sample.discarded_at or not sample_path(sample).is_file():
+        raise HTTPException(410, "Referenzbild wurde entfernt.")
+    if sample.transform_key != transform_key(camera.image_rotation, camera.image_flip):
+        raise HTTPException(409, "Bild passt nicht zur aktuellen Kameradrehung.")
+    if data.series_name is not None:
+        if not data.series_name.strip():
+            raise HTTPException(422, "Aufnahmegruppe darf nicht leer sein.")
+        sample.series_name = data.series_name.strip()
+    if data.image_mode is not None:
+        sample.image_mode = data.image_mode
+    sample.target_fill_level = None
+    sample.rejection_reason = data.reason
+    sample.approved = True
+    sample.queue_state = "confirmed"
+    sample.created_by = user.id
+    camera.learning_dirty = True
+    unchanged = False
+    for result in db.scalars(select(AnalysisResult).where(AnalysisResult.review_sample_id == sample.id)):
+        existing = db.scalar(select(Measurement.id).where(Measurement.source_import_id == result.source_import_id))
+        unchanged = unchanged or bool(existing)
+        result.status = "reviewed" if existing else "discarded"
+        result.reason = "Als ungeeignetes Lernbild bestätigt."
+    record = db.scalar(select(TrainingFetchRecord).where(TrainingFetchRecord.sample_id == sample.id))
+    if record:
+        record.state = "confirmed"
+    db.flush()
+    rebalance_window(db, camera_id)
+    db.commit()
+    return {"ok": True, "measurement_unchanged": unchanged}
+
+
 def camera_for_update(db, key):
     camera = db.get(Camera, key, with_for_update=True, populate_existing=True)
     if not camera:
@@ -127,10 +185,11 @@ def queue(
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
     exclude: str = Query(default="", max_length=8000),
+    focus: str | None = Query(default=None, max_length=50),
 ):
     training_camera(db, camera_id, user)
     return queue_data(
-        db, camera_id, tab, offset, limit, [s for s in exclude.split(",") if s]
+        db, camera_id, tab, offset, limit, [s for s in exclude.split(",") if s], focus
     )
 
 
@@ -188,6 +247,9 @@ def confirm(camera_id: str, item_id: str, data: Confirm, db: DB, user: CurrentUs
         sample.image_mode,
         sample.series_name,
     )
+    if sample.rejection_reason:
+        camera.learning_dirty = True
+    sample.rejection_reason = None
     sample.target_fill_level = data.fill_level
     sample.approved = True
     sample.queue_state = "confirmed"
@@ -230,7 +292,7 @@ def confirm(camera_id: str, item_id: str, data: Confirm, db: DB, user: CurrentUs
                 result.status = (
                     "reviewed" if result.status == "accepted" else "superseded"
                 )
-        elif result.status == "pending" and result.raw_fill_level is not None:
+        elif result.status in ("pending", "discarded") and result.discarded_at is None:
             create_analysis_measurement(db, result, camera, data.fill_level, user.id)
             result.status = "reviewed"
             created = True

@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api, basePath, date, number, write, type Container } from "@/lib/api";
+import { ContainerTabs } from "@/components/dashboard";
+import { refreshLearningPage } from "@/lib/learning-refresh";
 type Point = { x: number; y: number };
 type ROI =
   { x: number; y: number; width: number; height: number } | { points: Point[] };
@@ -38,11 +40,18 @@ const pointsOf = (roi: ROI): Point[] =>
         { x: roi.x + roi.width, y: roi.y + roi.height },
         { x: roi.x, y: roi.y + roi.height },
       ];
+const rejectionName = (reason: string) => reason === "lid_closed" ? "Deckel zu" : reason === "obstructed" ? "Sicht verdeckt" : "Nicht messbar";
 const modeName = (m: string) =>
   m === "day" ? "Tag" : m === "night_ir" ? "Nacht" : "Unbekannt";
 type Overview = {
   roi: ROI | null;
   learning_enabled: boolean;
+  training_mode: "automatic" | "manual";
+  image_retention_days: number;
+  sample_count: number;
+  approved_count: number;
+  storage_bytes: number;
+  latest_image: {id: string; content_url: string; captured_at: string; imported_at: string; state: string; sample_id: string | null} | null;
   recognition_requested: boolean;
   min_confidence: number;
   transform_key: string;
@@ -50,7 +59,10 @@ type Overview = {
   series: { name: string; sample_count: number }[];
   collection: {
     open_count: number;
-    limit: number;
+    limit: number | null;
+    last_import_at: string | null;
+    scan_at: string | null;
+    live_error: string | null;
     deferred_count: number;
     newest_at: string | null;
     oldest_at: string | null;
@@ -69,8 +81,11 @@ type Overview = {
     label: string;
     hint: string;
     can_retry: boolean;
+    can_train: boolean;
+    training_running: boolean;
     approved_count: number;
     has_active_recognition: boolean;
+    unusable: { approved_count: number; ready_modes: string[] };
     modes: Record<
       string,
       {
@@ -97,8 +112,11 @@ type Item = {
   source: string;
   name: string;
   created_at: string;
+  received_at: string;
   measured_at: string | null;
   fill_level: number | null;
+  rejection_reason: string | null;
+  analysis_reason: string | null;
   suggested_fill_level: number | null;
   estimated_error: number | null;
   image_mode: string;
@@ -114,6 +132,7 @@ type RestorePoint = {
   created_at: string;
 };
 type Queue = {
+  offset: number;
   items: Item[];
   total_count: number;
   remaining_count: number;
@@ -436,12 +455,17 @@ function TrainingCamera({
   const [progress, setProgress] = useState("");
   const [recognition, setRecognition] = useState(true);
   const [minimum, setMinimum] = useState(75);
+  const [newImages, setNewImages] = useState(false);
+  const [retentionDays, setRetentionDays] = useState(7);
+  const [retentionCount, setRetentionCount] = useState<number | null>(null);
+  const [trainingMode, setTrainingMode] = useState<"automatic" | "manual">("automatic");
+  const displayedQueue = useRef<Queue | null>(null);
   const initialized = useRef(false);
   const loadVersion = useRef(0);
   const limit = 20;
   const current =
     queue?.items.find((i) => i.id === selected) || queue?.items[0];
-  const load = useCallback(async () => {
+  const load = useCallback(async (background = false) => {
     const version = ++loadVersion.current;
     const [next, rows, points] = await Promise.all([
       api<Overview>(`/training/cameras/${camera.id}`),
@@ -456,14 +480,17 @@ function TrainingCamera({
     ]);
     if (version !== loadVersion.current) return;
     setInfo(next);
-    setQueue(rows);
+    const refresh = refreshLearningPage(displayedQueue.current, rows, background);
+    displayedQueue.current = refresh.page;
+    setQueue(refresh.page);
+    setNewImages(old => background ? old || refresh.hasUpdates : false);
     setRestorePoints(points.items);
-    setSelected((previous) =>
-      rows.items.some((i) => i.id === previous)
-        ? previous
-        : rows.items[0]?.id || "",
+    if (!background || refresh.page === rows) setSelected((previous) =>
+      rows.items.some((i) => i.id === previous) ? previous : rows.items[0]?.id || "",
     );
     if (!initialized.current) {
+      setRetentionDays(next.image_retention_days);
+      setTrainingMode(next.training_mode);
       setRecognition(next.recognition_requested);
       setMinimum(next.min_confidence * 100);
       initialized.current = true;
@@ -481,14 +508,46 @@ function TrainingCamera({
       });
     return () => {
       alive = false;
+      loadVersion.current++;
     };
   }, [load]);
   useEffect(() => {
+    if (busy) return;
     const timer = setInterval(() => {
-      void load().catch((e) => {setError(e.message); if(e.status === 403) void onChanged();});
+      void load(true).catch((e) => {setError(e.message); if(e.status === 403) void onChanged();});
     }, 5000);
     return () => clearInterval(timer);
-  }, [load]);
+  }, [load, busy]);
+  useEffect(() => {
+    if (!admin || !info || retentionDays >= info.image_retention_days || !Number.isInteger(retentionDays) || retentionDays < 1 || retentionDays > 365) {
+      setRetentionCount(null);
+      return;
+    }
+    let alive = true;
+    setRetentionCount(null);
+    api<{affected_unreviewed: number}>(`/training/cameras/${camera.id}/retention-preview?days=${retentionDays}`)
+      .then(result => {if (alive) setRetentionCount(result.affected_unreviewed);})
+      .catch(() => {if (alive) setError("Die Auswirkung der Aufbewahrung konnte nicht ermittelt werden.");});
+    return () => {alive = false;};
+  }, [admin, camera.id, retentionDays, info?.image_retention_days]);
+  async function openLatest() {
+    if (!info?.latest_image?.sample_id) return;
+    const latest = info.latest_image;
+    const nextTab = ["confirmed", "unusable"].includes(latest.state) ? "confirmed" : "pending";
+    setBusy(true);
+    try {
+      const rows = await api<Queue>(`/training/cameras/${camera.id}/queue?tab=${nextTab}&limit=${limit}&focus=sample_${latest.sample_id}`);
+      loadVersion.current++;
+      setTab(nextTab);
+      setOffset(rows.offset);
+      setExcluded([]);
+      displayedQueue.current = rows;
+      setQueue(rows);
+      setSelected(`sample_${latest.sample_id}`);
+      setNewImages(false);
+    } catch (e) {setError((e as Error).message);}
+    finally {setBusy(false);}
+  }
   async function act(action: () => Promise<unknown>, message: string) {
     setBusy(true);
     setError("");
@@ -523,6 +582,17 @@ function TrainingCamera({
         ? "Bestätigt. Der Lernstand wird automatisch aktualisiert, sobald genug geprüfte Bilder vorliegen."
         : "Bestätigt und gespeichert. Weiteres Lernen ist pausiert.",
     );
+  }
+  async function learnUnusable(button: HTMLButtonElement) {
+    if (!current || !button.form) return;
+    const form = new FormData(button.form);
+    await act(async () => {
+      await api(
+        `/training/cameras/${camera.id}/queue/${current.id}/unusable`,
+        write({reason: form.get("rejection_reason"),
+          ...(admin ? {image_mode: form.get("mode"), series_name: form.get("series")} : {})}),
+      );
+    }, "Als ungeeignetes Lernbild gespeichert. Bestehende Messwerte bleiben erhalten; die Erkennung wird nach Qualitätsprüfung aktualisiert.");
   }
   function skip() {
     if (!current) return;
@@ -688,6 +758,46 @@ function TrainingCamera({
           <span>Weiter lernen</span>
         </label>}
       </div>
+      {info?.summary.unusable && <p className="muted" role="status">
+        {info.summary.unusable.approved_count} bestätigte ungeeignete Lernbilder · {info.summary.unusable.ready_modes.length
+          ? `Ungeeignete Bilder erkennen: ${info.summary.unusable.ready_modes.map(modeName).join(", ")}`
+          : "Automatisches Verwerfen noch nicht freigegeben. Messbare und ungeeignete Bilder aus mindestens zwei unabhängigen Aufnahmegruppen je Bildmodus bestätigen."}
+      </p>}
+      {admin && info && <form className="panel learning-controls" onSubmit={e => {
+        e.preventDefault();
+        void act(async () => {
+          await api(`/training/cameras/${camera.id}/learning`, write({training_mode: trainingMode, image_retention_days: retentionDays}, "PUT"));
+        }, "Lerneinstellungen gespeichert.");
+      }}>
+        <Field label="Training">
+          <select value={trainingMode} onChange={e => setTrainingMode(e.target.value as "automatic" | "manual")}>
+            <option value="automatic">Automatisch trainieren</option>
+            <option value="manual">Training manuell starten</option>
+          </select>
+        </Field>
+        <Field label="Automatische Bilder aufbewahren (Tage)" hint="1–365 Tage ab lokaler Aufnahme. Bestätigte Lernbilder, Uploads und die neueste Vorschau bleiben erhalten.">
+          <input type="number" min={1} max={365} required value={retentionDays} onChange={e => setRetentionDays(Number(e.target.value))}/>
+        </Field>
+        {retentionDays < info.image_retention_days && <p role="status">{retentionCount === null ? "Betroffene Bilder werden ermittelt …" : `${retentionCount} unbewertete Lernbilder werden durch die verkürzte Aufbewahrung entfernt.`}</p>}
+        <Button disabled={busy || (retentionDays < info.image_retention_days && retentionCount === null)}>Einstellungen speichern</Button>
+        <Button type="button" variant="outline" disabled={busy || !info.summary.can_train} onClick={() => void act(
+          () => api("/models/train", write({camera_id: camera.id, managed: true})), "Training wurde angefordert. Geprüfte Verbesserungen werden automatisch übernommen."
+        )}>Training starten</Button>
+        <p className="hint">{info.training_mode === "manual" ? "Bewertungen werden gespeichert; Training beginnt erst auf Anforderung." : "Bestätigte Bewertungen werden automatisch zum Training verwendet."} {info.summary.training_running && "Ein bereits laufendes Training wird abgeschlossen."} Sammlung und Training pausieren über „Weiter lernen“; die Erkennung bleibt separat steuerbar.</p>
+      </form>}
+      {info?.latest_image && <section className="panel learning-latest" aria-label="Aktuelles Kamerabild">
+        <img src={`${basePath}/api${info.latest_image.content_url}`} alt="Neueste verfügbare Kameraaufnahme" loading="lazy"/>
+        <div><strong>Aktuelles Kamerabild</strong>
+          <p>Aufnahme: {date(info.latest_image.captured_at, camera.timezone)} · Import: {date(info.latest_image.imported_at, camera.timezone)}</p>
+          <p>{({pending: "Offen", confirmed: "Bestätigt", unusable: "Als ungeeignet bewertet", discarded: "Verworfen", expired: "Aufbewahrung abgelaufen", waiting: "Übernahme in die Lernliste ausstehend", deferred: "Übernahme in die Lernliste ausstehend"} as Record<string,string>)[info.latest_image.state]}</p>
+          {["pending", "confirmed", "unusable"].includes(info.latest_image.state) && <Button type="button" variant="outline" disabled={busy} onClick={() => void openLatest()}>Bildbewertung öffnen</Button>}
+        </div>
+      </section>}
+      {newImages && <div className="learning-notice" role="status">Neue Bilder verfügbar <Button variant="outline" disabled={busy} onClick={() => {
+        setTab("pending"); setOffset(0); setExcluded([]); setSelected("");
+        displayedQueue.current = null; setQueue(null); setNewImages(false);
+        if (tab === "pending" && offset === 0 && excluded.length === 0) void load();
+      }}>Neueste Bilder anzeigen</Button></div>}
       <div className="learning-tools">
         <div role="tablist" aria-label="Bildliste">
           <button
@@ -733,7 +843,12 @@ function TrainingCamera({
           </Button>
         </div>}
       </div>
-      {info?.collection && <p className="hint" role="status">{info.collection.open_count} von {info.collection.limit} neuesten automatischen Prüfbildern · {info.collection.status === "unconfigured" ? "Keine automatische Bildquelle eingerichtet" : info.collection.status === "blocked" || info.collection.status === "error" ? "Sammlung angehalten" : info.collection.status === "paused" ? "Sammlung pausiert" : info.collection.status === "collecting" ? "Neueste Bilder werden gesucht …" : info.collection.status === "full" ? "Rollende Auswahl vollständig" : info.collection.status === "exhausted" ? "Aktuell keine weiteren Bilder gefunden" : "Automatische Sammlung aktiv"}{info.collection.deferred_count > 0 && ` · ${info.collection.deferred_count} zurückgestellt`}{info.collection.error && ` · ${info.collection.error}`}{info.collection.rejections.count > 0 && ` · ${info.collection.rejections.count} FTP-Datei(en) abgelehnt${info.collection.rejections.latest_blocked ? " (bis zur Änderung gesperrt)" : ""}`}</p>}
+      {info?.collection && <div className="hint" role="status">
+        <p>{queue?.pending_count ?? info.collection.open_count} offen · {info.approved_count} bestätigt · {number(info.storage_bytes / 1024 / 1024)} MB Lernbilder · Aufbewahrung: {info.image_retention_days} Tage</p>
+        <p>Letzter Import: {date(info.collection.last_import_at, camera.timezone)} · Neuestes offenes Lernbild: {date(info.collection.newest_at, camera.timezone)}</p>
+        <p>{!info.learning_enabled ? "Sammlung pausiert" : "Laufende Sammlung aktiv"}{info.collection.live_error && ` · Import: ${info.collection.live_error}`}</p>
+        <p>FTP-Nachsammlung: {info.collection.status === "unconfigured" ? "Keine automatische Bildquelle eingerichtet" : info.collection.status === "blocked" || info.collection.status === "error" ? "Gestört" : info.collection.status === "paused" ? "Pausiert" : info.collection.status === "collecting" ? "Bilder werden gesucht …" : info.collection.status === "exhausted" ? "Aktuell keine weiteren Bilder gefunden" : "Aktiv"}{info.collection.error && ` · ${info.collection.error}`}{info.collection.rejections.count > 0 && ` · ${info.collection.rejections.count} FTP-Datei(en) abgelehnt`}</p>
+      </div>}
       {notices}
       {admin && info && !info.roi && (
         <div className="learning-setup">
@@ -876,15 +991,18 @@ function TrainingCamera({
                 )}
               </div>
               <form
-                key={`${current.id}-${current.fill_level}-${current.image_mode}-${current.series_name}`}
+                key={`${current.id}-${current.fill_level}-${current.rejection_reason}-${current.image_mode}-${current.series_name}`}
                 className="learning-review-form"
                 onSubmit={confirm}
               >
                 <div>
                   <span className="eyebrow">BILD PRÜFEN</span>
                   <h2>Wie voll ist der Behälter?</h2>
+                  <p>Zur Lernliste hinzugefügt: {date(current.received_at, camera.timezone)}</p>
                   <p>Den tatsächlichen Füllstand eingeben.</p>
                 </div>
+                {current.rejection_reason && <p role="status"><strong>Ungeeignet: {rejectionName(current.rejection_reason)}</strong> · Als Gegenbeispiel gespeichert, ohne Füllstand.</p>}
+                {current.analysis_reason && <p className="muted">{current.analysis_reason}</p>}
                 {current.suggested_fill_level != null && (
                   <p className="learning-estimate">
                     Bisherige Schätzung:{" "}
@@ -924,6 +1042,18 @@ function TrainingCamera({
                     ? "Bestätigen & weiter"
                     : "Änderung speichern"}
                 </Button>
+                <Field label="Grund für ungeeignetes Lernbild">
+                  <select name="rejection_reason" defaultValue={current.rejection_reason ?? "lid_closed"}>
+                    <option value="lid_closed">Deckel zu</option>
+                    <option value="obstructed">Sicht verdeckt</option>
+                    <option value="unusable">Nicht messbar</option>
+                  </select>
+                </Field>
+                <Button variant="outline" type="button" disabled={busy || !src || incompatible}
+                  onClick={(e) => void learnUnusable(e.currentTarget)}>
+                  {tab === "pending" ? "Als ungeeignet lernen & weiter" : "Als ungeeignet speichern"}
+                </Button>
+                <small>Das Bild bleibt zum Lernen erhalten. Für Duplikate oder unnötige Bilder „Nur verwerfen“ wählen.</small>
                 <Button
                   variant="ghost"
                   type="button"
@@ -931,7 +1061,7 @@ function TrainingCamera({
                   onClick={skip}
                 >
                   <SkipForward size={15} />
-                  {tab === "pending" ? "Verwerfen & weiter" : "Weiteres Bild"}
+                  {tab === "pending" ? "Nur verwerfen & weiter" : "Weiteres Bild"}
                 </Button>
                 {admin ? <details className="learning-image-details">
                   <summary>Bilddetails</summary>
@@ -995,7 +1125,7 @@ function TrainingCamera({
                     <span>Kein Bild</span>
                   )}
                   <span>
-                    {item.approved && item.fill_level != null
+                    {item.rejection_reason ? `Ungeeignet: ${rejectionName(item.rejection_reason)}` : item.approved && item.fill_level != null
                       ? `${number(item.fill_level)} %`
                       : modeName(item.image_mode)}
                   </span>
@@ -1362,7 +1492,11 @@ export default function Training({
   return (
     <>
       <div className="training-selection compact-training-selection">
-        <label>
+        <div className="training-container-tabs">
+          <ContainerTabs containers={containers} selected={current.id} onSelect={onSelect}
+            includeAll={false} panelId="training-content" idPrefix="training-tab" />
+        </div>
+        <label className="training-container-select">
           Behälter
           <select value={current.id} onChange={(e) => onSelect(e.target.value)}>
             {containers.map((c) => (
@@ -1374,12 +1508,14 @@ export default function Training({
         </label>
         <span>Ein Lernstand für Tag und Nacht</span>
       </div>
-      <TrainingCamera
-        admin={admin}
-        key={current.camera.id}
-        container={current}
-        onChanged={onChanged}
-      />
+      <div id="training-content" role="tabpanel" aria-label={`Training · ${current.name}`}>
+        <TrainingCamera
+          admin={admin}
+          key={current.camera.id}
+          container={current}
+          onChanged={onChanged}
+        />
+      </div>
     </>
   );
 }

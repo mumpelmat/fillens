@@ -150,7 +150,7 @@ def test_discard_keeps_files_needed_by_jobs(admin, container):
     assert not path.exists()
 
 
-def test_backfill_uses_newest_rolling_window_and_is_training_only(
+def test_backfill_retains_all_recent_references_and_is_training_only(
     admin, container, ftp_tree
 ):
     root, port, calls = ftp_tree
@@ -173,13 +173,12 @@ def test_backfill_uses_newest_rolling_window_and_is_training_only(
         )
         for _ in range(10):
             assert 0 <= collect_training(db, cid) <= 10
-            if automatic_open_count(db, cid) == 50:
-                break
-        assert automatic_open_count(db, cid) == 50
+        initial_count = automatic_open_count(db, cid)
+        assert 50 < initial_count <= 84
         assert collect_training(db, cid) == 0
         rows = list(db.scalars(select(TrainingSample)))
         open_rows = [s for s in rows if s.queue_state == "pending"]
-        assert len(open_rows) == 50
+        assert len(open_rows) == initial_count
         oldest = min(open_rows, key=lambda row: aware(row.captured_at))
         newest_stamp = now - timedelta(seconds=30)
         image(
@@ -191,8 +190,8 @@ def test_backfill_uses_newest_rolling_window_and_is_training_only(
         db.get(TrainingCollection, cid).scanned_at = now - timedelta(hours=2)
         db.commit()
         assert collect_training(db, cid) == 1
-        assert automatic_open_count(db, cid) == 50
-        assert db.get(TrainingSample, oldest.id).queue_state == "deferred"
+        assert automatic_open_count(db, cid) == initial_count + 1
+        assert db.get(TrainingSample, oldest.id).queue_state == "pending"
         assert db.scalar(
             select(TrainingSample.id).where(
                 TrainingSample.camera_id == cid,
@@ -215,7 +214,7 @@ def test_backfill_uses_newest_rolling_window_and_is_training_only(
     )
     with SessionLocal() as db:
         assert collect_training(db, cid) == 0
-        assert automatic_open_count(db, cid) == 50
+        assert automatic_open_count(db, cid) == initial_count
         assert (
             db.scalar(select(func.count()).select_from(TrainingFetchRecord))
             >= previous
@@ -235,7 +234,7 @@ def test_backfill_uses_newest_rolling_window_and_is_training_only(
     assert stamp.strftime("%Y/%m/%d") not in calls
 
 
-def test_live_capture_honors_common_limit_and_tombstone(admin, container):
+def test_live_capture_has_no_count_limit_and_honors_tombstone(admin, container):
     configure(admin, container)
     cid = container["camera"]["id"]
     product_image(container)
@@ -270,12 +269,12 @@ def test_live_capture_honors_common_limit_and_tombstone(admin, container):
         db.commit()
         replacement = capture_review_sample(db, camera, image_row)
         assert replacement is not None
-        assert automatic_open_count(db, cid) == 50
+        assert automatic_open_count(db, cid) == 52
         assert db.scalar(
             select(func.count())
             .select_from(TrainingSample)
             .where(TrainingSample.queue_state == "deferred")
-        ) >= 1
+        ) == 0
 
 
 def test_date_window_includes_year_boundary_and_dst():
@@ -396,7 +395,7 @@ def test_stable_bad_ftp_fingerprint_retries_twice_then_blocks(container):
         assert retry_allowed(db, cid, changed)
 
 
-def test_live_slot_occupied_during_download_is_respected(
+def test_parallel_live_capture_does_not_displace_downloaded_reference(
     container, ftp_tree, monkeypatch
 ):
     from app import training_collection
@@ -446,7 +445,7 @@ def test_live_slot_occupied_during_download_is_respected(
             )
         db.commit()
         assert collect_training(db, cid) == 1
-        assert automatic_open_count(db, cid) <= 50
+        assert automatic_open_count(db, cid) == 51
 
 
 def test_parallel_confirm_and_discard_cannot_both_win(admin, container):

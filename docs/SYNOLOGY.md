@@ -36,7 +36,7 @@ Weitere Werte:
 
 | Variable | Empfehlung |
 |---|---|
-| `FILLENS_VERSION` | Feste Version wie `0.5.2` statt `latest`, damit Updates bewusst erfolgen |
+| `FILLENS_VERSION` | Feste Version wie `0.6.0` statt `latest`, damit Updates bewusst erfolgen |
 | `COOKIE_SECURE` | `true` bei Zugriff über HTTPS (Reverse Proxy); nur für einen reinen HTTP-Test im LAN `false` |
 | `BIND_ADDRESS` | `127.0.0.1`, wenn der DSM-Reverse-Proxy genutzt wird; `0.0.0.0` für direkten LAN-Zugriff über `http://<NAS-IP>:3000` |
 | `PORT` | Freier Port auf dem NAS, Standard `3000` |
@@ -75,26 +75,15 @@ Die fertigen Images laufen an der Domainwurzel bzw. unter einer Subdomain. Ein U
 
 ## 6. Backup
 
-Zu sichern sind **Datenbank, `.env` (Fernet-Schlüssel) und der Ordner `ml/`**. Den Bildpuffer (Docker-Volume `fillens_image_data`) nicht sichern; er baut sich aus neuen FTP-Importen auf. Den Ordner `postgres/` nicht im laufenden Betrieb als Dateikopie sichern, sondern einen Dump erzeugen.
+Zu sichern sind **Datenbank, `.env`, `compose.yaml`, der Ordner `ml/` und das Docker-Volume `image_data`**. Den Ordner `postgres/` nicht im laufenden Betrieb als Dateikopie sichern, sondern einen Dump erzeugen. Backend und Worker während der gemeinsamen Sicherung stoppen. Die [Update-Anleitung](UPDATE.md#1-konsistent-sichern) enthält Befehle, die auch den als Docker-Volume gespeicherten Bildbestand erfassen.
 
-Täglicher Dump über **Systemsteuerung → Aufgabenplaner → Erstellen → Geplante Aufgabe → Benutzerdefiniertes Script**, Benutzer `root`:
-
-```bash
-cd /volume1/docker/fillens && mkdir -p backups && chmod 700 backups && \
-docker compose exec -T postgres pg_dump -U fillens -d fillens -Fc > backups/fillens-$(date +%F).dump && \
-chmod 600 backups/fillens-$(date +%F).dump && \
-find backups -name 'fillens-*.dump' -mtime +14 -delete
-```
-
-Anschließend `/volume1/docker/fillens` mit **Hyper Backup** sichern und dabei `postgres/` ausschließen. Konsistent sind Dump und `ml/` desselben Zeitpunkts, aufgenommen ohne laufende Trainings oder Uploads. Wiederherstellung wie im README unter „Backup und Update“.
+Das erzeugte Sicherungsverzeichnis verschlüsselt auf ein anderes Laufwerk übertragen, beispielsweise mit Hyper Backup. Eine alleinige Sicherung des Projektordners erfasst das externe Docker-Bildvolume nicht.
 
 ## 7. Update
 
-1. Backup erstellen (Schritt 6).
-2. In `.env` `FILLENS_VERSION` auf die neue Version setzen (siehe [Änderungsprotokoll](CHANGELOG.md) und GitHub-Releases).
-3. Container Manager → Projekt `fillens` → **Aktion → Erstellen** (lädt die neuen Images und startet neu) bzw. per SSH `sudo docker compose pull && sudo docker compose up -d`.
+Die [Update-Anleitung für bestehende Installationen](UPDATE.md) beschreibt Sicherung, Image-Wechsel auf `0.6.0`, Prüfungen und Rückweg. Per SSH im bisherigen Projektordner ausführen (je nach Einrichtung mit `sudo`). Die vorhandene `.env` beibehalten und darin nur `FILLENS_VERSION` ändern; keine neuen Secrets erzeugen und keinen neuen Administrator anlegen.
 
-Datenbankmigrationen laufen beim Start des Backends automatisch. Nicht auf ältere Versionen zurückwechseln, ohne die passende Sicherung wiederherzustellen. `docker compose down -v` löscht den Bildpuffer und ist kein Update-Schritt.
+Datenbankmigrationen laufen beim Backend-Start automatisch. Vor dem Neustart den alten Worker stoppen, damit er nicht gegen das neue Schema arbeitet. Ein Rückwechsel erfordert die passende vollständige Sicherung. `docker compose down -v` ist kein Update-Schritt.
 
 ## Fehlersuche
 

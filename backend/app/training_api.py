@@ -40,7 +40,7 @@ from .schemas import Input
 from .security import DB, Admin, CurrentUser
 from .services import image_path
 from .training_access import training_camera
-from .training_store import collection_summary
+from .training_store import collection_summary, latest_image_data, retention_preview
 from .vision import image_features, transform_key
 
 router = APIRouter(prefix="/api")
@@ -78,6 +78,7 @@ class TrainInput(Input):
     camera_id: str
     name: str = Field(default="Füllstandsmodell", min_length=1, max_length=120)
     image_mode: Literal["all", "day", "night_ir"] = "all"
+    managed: bool = False
 
 
 class ReviewInput(Input):
@@ -86,7 +87,9 @@ class ReviewInput(Input):
 
 
 class LearningInput(Input):
-    enabled: bool
+    enabled: bool | None = None
+    training_mode: Literal["automatic", "manual"] | None = None
+    image_retention_days: int | None = Field(default=None, ge=1, le=365)
 
 
 def require(db, cls, key):
@@ -105,6 +108,7 @@ def sample_data(sample: TrainingSample) -> dict:
             "original_name",
             "size_bytes",
             "target_fill_level",
+            "rejection_reason",
             "image_mode",
             "series_name",
             "approved",
@@ -129,6 +133,7 @@ def model_data(model: ModelVersion, camera: Camera) -> dict:
             "metrics_json",
             "error",
             "training_sample_count",
+            "trigger",
         )
     } | {
         "created_at": aware(model.created_at).isoformat(),
@@ -153,6 +158,7 @@ def training_overview(camera_id: str, db: DB, user: CurrentUser):
         .where(
             TrainingSample.camera_id == camera.id,
             TrainingSample.approved.is_(True),
+            TrainingSample.discarded_at.is_(None),
             TrainingSample.transform_key
             == transform_key(camera.image_rotation, camera.image_flip),
         )
@@ -162,6 +168,9 @@ def training_overview(camera_id: str, db: DB, user: CurrentUser):
         "collection": collection_summary(db, camera),
         "roi": camera.roi_json,
         "learning_enabled": camera.learning_enabled,
+        "training_mode": camera.training_mode,
+        "image_retention_days": camera.image_retention_days,
+        "latest_image": latest_image_data(db, camera),
         "recognition_requested": camera.recognition_requested,
         "summary": learning_summary(db, camera),
         "learning_status": learning_status(db, camera) if user.role == "admin" else {},
@@ -376,6 +385,9 @@ def label_sample(sample_id: str, data: SampleUpdate, db: DB, _admin: Admin):
         )
     if not data.series_name.strip():
         raise HTTPException(422, "Aufnahmeserie darf nicht leer sein.")
+    if sample.rejection_reason:
+        camera.learning_dirty = True
+    sample.rejection_reason = None
     for key, value in data.model_dump().items():
         setattr(sample, key, value)
     sample.series_name = sample.series_name.strip()
@@ -425,7 +437,10 @@ def delete_sample(sample_id: str, db: DB, _admin: Admin):
         .values(review_visible=False)
     )
     require(db, Camera, sample.camera_id).learning_dirty = True
-    db.delete(sample)
+    from .db import utcnow
+    sample.discarded_at = utcnow()
+    sample.queue_state = "discarded"
+    sample.size_bytes = 0
     db.commit()
     return {"ok": True}
 
@@ -436,10 +451,15 @@ def enqueue_training(data: TrainInput, db: DB, admin: Admin):
     if not camera:
         raise HTTPException(404, "Kamera nicht gefunden.")
     try:
-        model = enqueue_model(db, camera, data.name, data.image_mode, admin.id)
+        if data.managed and not camera.learning_enabled:
+            raise ValueError("Zuerst den Lernmodus einschalten.")
+        model = enqueue_model(db, camera, "Gemeinsamer Lernstand" if data.managed else data.name,
+                              "all" if data.managed else data.image_mode, admin.id, managed=data.managed, trigger="manual")
     except ValueError as exc:
         raise HTTPException(409, str(exc))
     db.commit()
+    if model is None:
+        raise HTTPException(409, "Dieser bestätigte Datenstand wurde bereits trainiert. Neue Bewertungen hinzufügen oder einen fehlgeschlagenen Lauf erneut versuchen.")
     return model_data(model, camera)
 
 
@@ -573,14 +593,38 @@ def reference_content(analysis_id: str, db: DB, user: CurrentUser):
     raise HTTPException(410, "Das frühere Referenzbild ist nicht mehr vorhanden.")
 
 
+@router.get("/training/cameras/{camera_id}/retention-preview")
+def preview_retention(camera_id: str, db: DB, _admin: Admin, days: int = Query(ge=1, le=365)):
+    require(db, Camera, camera_id)
+    return {"affected_unreviewed": retention_preview(db, camera_id, days)}
+
+
 @router.put("/training/cameras/{camera_id}/learning")
 def learning_switch(camera_id: str, data: LearningInput, db: DB, _admin: Admin):
     camera = db.get(Camera, camera_id, with_for_update=True)
     if not camera:
         raise HTTPException(404, "Kamera nicht gefunden.")
-    camera.learning_enabled = data.enabled
+    if data.enabled is not None:
+        camera.learning_enabled = data.enabled
+    if data.training_mode is not None:
+        camera.training_mode = data.training_mode
+        if data.training_mode == "manual":
+            from .db import utcnow
+            result = db.execute(update(ModelVersion).where(
+                ModelVersion.camera_id == camera.id, ModelVersion.status == "queued",
+                ModelVersion.trigger == "automatic",
+            ).values(status="cancelled", finished_at=utcnow()))
+            if result.rowcount:
+                camera.learning_dirty = True
+    if data.image_retention_days is not None:
+        camera.image_retention_days = data.image_retention_days
     db.commit()
-    return {"learning_enabled": camera.learning_enabled}
+    # Bereits lokal vorhandene Bilder sofort sichtbar machen, ohne FTP im Request.
+    from .training_store import collect_buffer
+    collect_buffer(db, camera)
+    db.commit()
+    return {"learning_enabled": camera.learning_enabled, "training_mode": camera.training_mode,
+            "image_retention_days": camera.image_retention_days}
 
 
 @router.post("/training/analyses/{analysis_id}/review")
@@ -606,6 +650,7 @@ def review_analysis(analysis_id: str, data: ReviewInput, db: DB, admin: Admin):
     if result.status == "accepted" and sample is None:
         raise HTTPException(410, "Kein Trainingsbild mehr vorhanden.")
     if sample is not None:
+        sample.rejection_reason = None
         sample.target_fill_level, sample.approved, sample.created_by = (
             data.fill_level,
             True,

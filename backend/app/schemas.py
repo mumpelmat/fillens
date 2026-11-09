@@ -172,6 +172,16 @@ class CameraInput(SiteInput):
         return value
 
 
+class FTPTestInput(FTPInput):
+    connection_id: str | None = Field(default=None, max_length=36)
+    ftp_root: str = Field(default="", max_length=2000)
+
+    @field_validator("ftp_root")
+    @classmethod
+    def root(cls, value: str) -> str:
+        return CameraInput.root(value)
+
+
 class ManualInput(Input):
     image_id: str
     fill_level: float = Field(ge=0, le=100)

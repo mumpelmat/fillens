@@ -92,7 +92,8 @@ def stat(ftp: FTP, path: str) -> RemoteFile:
 
 
 def listing(
-    ftp: FTP, directory: str, budget: ScanBudget, operation: str = "list"
+    ftp: FTP, directory: str, budget: ScanBudget, operation: str = "list",
+    *, strict_types: bool = False,
 ) -> list[tuple[str, dict[str, str]]]:
     try:
         ftp.cwd(directory)
@@ -131,6 +132,18 @@ def listing(
                 try:
                     ftp.cwd(posixpath.join(directory, name))
                 except error_perm:
+                    if strict_types:
+                        # Für eine Diagnose darf ein nicht betretbarer Ordner
+                        # nicht allein anhand seines Namens als Bild zählen.
+                        try:
+                            ftp.voidcmd("TYPE I")
+                            if ftp.size(posixpath.join(directory, name)) is None:
+                                raise error_perm("550")
+                        except error_perm as exc:
+                            raise ImportFailure(
+                                "entry_type_unknown",
+                                "Einträge konnten wegen fehlender Metadaten oder Rechte nicht eindeutig zugeordnet werden. Keine vollständige Zählung verfügbar.",
+                            ) from exc
                     kind = "file"
                 else:
                     kind = "dir"

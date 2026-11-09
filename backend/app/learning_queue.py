@@ -16,7 +16,7 @@ def queue_query(camera_id, tab):
     )
     needs = or_(
         TrainingSample.approved.is_(False),
-        TrainingSample.target_fill_level.is_(None),
+        (TrainingSample.target_fill_level.is_(None) & TrainingSample.rejection_reason.is_(None)),
         pending,
     )
     sample = select(
@@ -46,7 +46,7 @@ def queue_query(camera_id, tab):
     return union_all(sample, legacy).subquery()
 
 
-def queue_data(db, camera_id, tab, offset, limit, excluded):
+def queue_data(db, camera_id, tab, offset, limit, excluded, focus=None):
     from .ml_service import sample_path
     from .services import image_path
 
@@ -66,6 +66,15 @@ def queue_data(db, camera_id, tab, offset, limit, excluded):
         or 0
     )
     remaining = db.scalar(select(func.count()).select_from(query).where(*filters)) or 0
+    if focus:
+        kind, _, key = focus.partition("_")
+        target = db.execute(select(query).where(query.c.kind == kind, query.c.id == key)).first()
+        if target:
+            ahead = db.scalar(select(func.count()).select_from(query).where(
+                (query.c.created_at > target.created_at) |
+                ((query.c.created_at == target.created_at) & (query.c.id > target.id))
+            )) or 0
+            offset = ahead // limit * limit
     keys = list(
         db.execute(
             select(query)
@@ -128,6 +137,7 @@ def queue_data(db, camera_id, tab, offset, limit, excluded):
                 "source": sample.origin if sample else "camera",
                 "name": sample.original_name if sample else "Früheres Prüfbild",
                 "created_at": aware(key.created_at).isoformat(),
+                "received_at": aware(sample.created_at if sample else result.created_at).isoformat(),
                 "measured_at": aware(result.measured_at).isoformat()
                 if result
                 else aware(sample.captured_at).isoformat() if sample and sample.captured_at else None,
@@ -136,6 +146,8 @@ def queue_data(db, camera_id, tab, offset, limit, excluded):
                 else measurement.effective_fill_level
                 if measurement
                 else None,
+                "rejection_reason": sample.rejection_reason if sample else None,
+                "analysis_reason": result.reason if result else None,
                 "suggested_fill_level": result.raw_fill_level if result else None,
                 "estimated_error": result.estimated_error if result else None,
                 "image_mode": sample.image_mode if sample else result.image_mode,
@@ -152,6 +164,7 @@ def queue_data(db, camera_id, tab, offset, limit, excluded):
         )
     return {
         "items": items,
+        "offset": offset,
         "total_count": total,
         "remaining_count": remaining,
         "pending_count": pending_count,

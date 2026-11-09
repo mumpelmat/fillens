@@ -75,10 +75,10 @@ def test_recursive_ftp_import_and_repeated_scans(container, tmp_path, legacy):
             assert (
                 camera.last_error is not None
             )  # Ungültiges Bild meldet einen Fehler, ohne gute Bilder zu blockieren.
-            assert len(list(db.scalars(select(ImageBuffer)))) == 3
+            assert len(list(db.scalars(select(ImageBuffer)))) == 5
             assert len(list(db.scalars(select(ImportRecord)))) == 6
             assert import_camera(db, camera, {}) == 0
-            assert len(list(db.scalars(select(ImageBuffer)))) == 3
+            assert len(list(db.scalars(select(ImageBuffer)))) == 5
     finally:
         stop.set()
         thread.join(timeout=3)

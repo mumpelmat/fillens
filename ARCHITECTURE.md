@@ -14,7 +14,7 @@ flowchart LR
     Proxy --> Browser[React-Portal]
 ```
 
-`frontend`: Next.js 16, React 19, TypeScript strict, Tailwind 4, shadcn/ui-Button auf Radix, Recharts und Lucide. Eine angemeldete Portaloberfläche bietet Übersicht, Anlagen und Verlauf; Admins zusätzlich Training, Benutzer und System; Meldungen für alle angemeldeten Benutzer. Navigation innerhalb des Portals ist clientseitig. Die Admin-Trainingsseite ist auch direkt unter /training erreichbar.
+`frontend`: Next.js 16, React 19, TypeScript strict, Tailwind 4, shadcn/ui-Button auf Radix, Recharts und Lucide. Eine angemeldete Portaloberfläche bietet die Mehrbehälter-Übersicht mit gemeinsamer Messungsansicht und Anlagen; Admins zusätzlich Training, Benutzer und System; Meldungen für alle angemeldeten Benutzer. Navigation innerhalb des Portals ist clientseitig. Die Admin-Trainingsseite ist auch direkt unter /training erreichbar.
 
 `backend`: synchrones FastAPI, SQLAlchemy 2, Psycopg 3 und Alembic. Ausschließlich relative öffentliche API-Pfade. Der Next.js-Proxy spricht die API serverseitig an und reicht HttpOnly-Cookies und CSRF-Header weiter. Keine CORS-Freigabe, kein direkt öffentlicher API-Port in Compose.
 
@@ -34,7 +34,7 @@ flowchart LR
 | `ftp_connections` | Verbindung und mit Fernet verschlüsseltes Passwort |
 | `cameras` | Eine Kamera pro Behälter, FTP-Zuordnung, relativer Root, Ausrichtung und Importstatus |
 | `import_records` | Dauerhaftes Journal ohne Bildbytes; Dateiversion und Inhalts-Hash zur Deduplizierung |
-| `image_buffer` | Maximal drei Einträge je Kamera; lokaler UUID-Dateiname, Aufnahmezeit, Zeitquelle und Größe |
+| `image_buffer` | Zeitlich aufbewahrte Kameraaufnahmen ohne Anzahlgrenze; Verknüpfung zur Lernreferenz, lokaler Aufnahmezeitpunkt und Nachholstatus; neueste Vorschau geschützt |
 | `measurements` | Dauerhafte Füllstände, historische Kapazität/Einheit, absolute Menge, Änderungsraten, Herkunft und Ersteller |
 | `worker_status` | Letztes Lebenszeichen des Importers |
 
@@ -46,7 +46,7 @@ Nur der Worker schreibt Produktivbilder. Eine Dateisperre auf dem gemeinsamen Sp
 
 Dateisystem und Datenbank bilden keine gemeinsame Transaktion. Deshalb gilt die Reihenfolge **zuerst alte Datei entfernen, dann neue Datei schreiben und Metadaten committen**. So entstehen auch vorübergehend keine vier lokalen Produktivbilddateien. Bei einem Absturz kann ein veralteter DB-Eintrag auf eine fehlende Datei zeigen oder eine unreferenzierte Datei verbleiben. `reconcile` bereinigt beides beim nächsten Kamera-Scan. Ein Bildzugriff auf eine fehlende Datei antwortet mit 410, ein bereits entfernter Datensatz mit 404. Ein bestehender Messwert bleibt in beiden Fällen erhalten. Für den Produktivpuffer wird kein Archiv angelegt. Seit 0.4.0 können bei aktivem Lernen analysierte Referenzbilder im getrennten Trainingsspeicher behalten und als Thumbnails/Lightbox angezeigt werden.
 
-Die Drei-Bilder-Grenze wird durch den exklusiven Worker und dessen Import-/Bereinigungsablauf durchgesetzt; direkte Datenbank-/Dateisystemeingriffe umgehen diese Anwendungsgarantie. Ein kurzzeitig nicht referenzierter UUID-Dateiname ist nicht über die API erreichbar.
+Der exklusive Worker übernimmt neue Kamerabilder unabhängig von Analyse und Modell in den ML-Speicher. `training_store` verwaltet Nachholen, zeitliche Aufbewahrung und geschützte Referenzen. DB-/Dateiabgleich entfernt fehlende oder verwaiste Dateien ohne feste Anzahlbegrenzung. Kameraimporte und Lernkopien haben getrennte lokale Aufnahmezeiten; bestätigte Lernkopien bleiben erhalten, auch wenn ihre Kameraoriginale ablaufen.
 
 ## Messwerte und Zeit
 
@@ -64,7 +64,7 @@ Diagramme liefern maximal 800 gleichmäßig verteilte Punkte, einschließlich ä
 - HttpOnly, SameSite Strict, Secure konfigurierbar; Cookie-Namen und Cookie-Pfad sind installationsspezifisch.
 - CSRF-Token wird als lesbarer Cookie ausgegeben; alle angemeldeten Schreibzugriffe prüfen dessen Hash gegen die DB. Cross-Site-Schreibzugriffe werden zusätzlich über Fetch-Metadaten abgelehnt. JSON-Anmeldung und fehlende CORS-Freigabe begrenzen Login-CSRF.
 - Rollen werden auf jedem Endpunkt serverseitig geprüft. Alle aktiven Benutzer dürfen alle angelegten Behälter sehen. System, Zugangsdatenverwaltung und Benutzerliste sind nur für Admins erreichbar.
-- Loginlimit je normalisierter E-Mail; PostgreSQL serialisiert parallele Versuche per Advisory-Transaktionssperre. Kein Passwortreset per E-Mail, keine MFA in diesem Stand.
+- Loginlimit je normalisierter E-Mail; PostgreSQL serialisiert parallele Versuche per Advisory-Transaktionssperre. Passwortreset per SMTP mit 30 Minuten gültigem Einmalcode, gehashten Codes und Anfragebegrenzung; keine MFA in diesem Stand.
 - Fernet-Schlüssel kommt aus der Umgebung; Zugangsdaten werden weder in API-Antworten noch Validierungsfehlern oder Anwendungslogs ausgegeben.
 - Validierte Eingaben, SQLAlchemy-Parameterbindung, React-Escaping, Format-/Pixel-/Downloadlimits, keine öffentlichen Uploads. Kein HTML aus Benutzertext.
 - Kein Zugriffsschutz auf dem FTP-Ziel selbst: Ein dafür berechtigter Administrator legt absichtlich interne Serveradressen fest. FTP ist unverschlüsselt; FTPS kann mit Zertifikatsprüfung genutzt werden. SFTP folgt später.
@@ -135,6 +135,18 @@ Migration 0006 ergänzt cameras.recognition_requested und model_versions.managed
 
 training_collection.py trennt historischen Referenzabruf von ImportRecord/ImageBuffer/Measurement: normalisierte Dateien direkt im ML-Volume, Herkunft ftp, keine Analyseergebnisse oder Messungen für historische Abrufe. Persistente Tagesordner-/Kandidatenliste und Fingerprintjournal ermöglichen Wiederanlauf. Datumsauflistung mit Zeitfenster und Kamera-Zeitzone statt Vollarchivfallback; MLSD/NLST zeilenweise begrenzt. Derselbe Einzel-Worker führt nach dem normalen Import einen kurzlebigen spawn-Hilfsprozess mit höchstens zehn Downloads und äußerem 30-Sekunden-Limit aus. Keine neue Dienstarchitektur/Abhängigkeit.
 
-training_store.py zählt offene unbestätigte automatische Referenzen, verwaltet das gemeinsame Limit 50 und bereinigt verworfene Dateien nach Ende abhängiger Jobs. Hash-/Sperrdatensätze bleiben bestehen; Kamera-Zeilensperren serialisieren Sammlung, menschliche Änderungen und Freigabeentzug. Migration 0007 ergänzt origin/captured_at/discarded_at, training_collection und training_fetch_records; frühere Referenzen werden aus Analyseverknüpfungen klassifiziert.
+training_store.py verwaltet offene automatische Referenzen ohne Anzahlbegrenzung, zeitliche Bereinigung, Nachholen und aktuelle Vorschau. Hash-/Sperrdatensätze bleiben bestehen; bestätigte Bilder, Uploads, aktuelle Vorschau und für Jobs/Restore benötigte Referenzen werden geschützt. `learning_enabled` steuert Sammlung/Lernen, `training_mode` den automatischen oder manuellen Start; die Erkennung bleibt getrennt.
 
 training_access.py erlaubt CurrentUser Bildprüfung nur bei eingeschaltetem Lernen; Admin-Verwaltung bleibt separat. API-Übersicht gibt normalen Nutzern keine Modellhistorie aus. Portal filtert den Trainingsreiter und Behälter, trainiert keine Prognosen ohne menschliche Bestätigung und entzieht die Ansicht nach Pause. Bestätigen/Verwerfen prüfen die Freigabe unter Kamerasperre; Bildendpunkte prüfen sie bei jedem Abruf. Horizontale Dashboard-Warnschwellen aus 0.4.1 sind ab 0.5.1 entfernt. RateHistory nutzt lineare Linien, eine auch für ausschließlich null definierte Y-Achse und getrennte Zyklen/Datenlücken.
+
+## Arbeitsstand 06.11.2026: Mehrbehälter-Ansicht und Diagnosetests
+
+`dashboard.tsx` teilt Kennzahlenlogik und Datenladezustände zwischen Gesamt- und Messungsansicht. `history-loader.ts` begrenzt die Gesamtverlaufsabfragen auf vier gleichzeitige Requests; AbortController und Abfrageschlüssel trennen Behälter, Zeiträume und Revisionen. Vorhandene Diagramme, Raten, Ereignisse und Einstellungsdialoge bleiben die fachlichen Bausteine.
+
+`ftp_probe.py` nutzt die bestehende Verbindung und Verzeichnisauflistung in einem kurzlebigen Prozess. Die API erzwingt 20 Sekunden, begrenzt Einträge und beendet den Prozess auch bei Netzwerkhängern. Keine persistente Testhistorie, keine Downloads und keine Ausführung im Import-Worker.
+
+`password_reset.py` ergänzt öffentliche JSON-Routen für SMTP-Verfügbarkeit, Codeanforderung und Codebestätigung. Migration 0009 ergänzt `password_resets`; Codehashes und Passwortrevision schützen Einmalverbrauch und widerrufen Codes nach externen Passwortänderungen. Versand als FastAPI-Hintergrundaufgabe über den gemeinsamen SMTP-Transport, mit Prozesslimit und ohne persistente Wiederholungswarteschlange. Fehlgeschlagener Versand invalidiert seinen Code. PostgreSQL-Zeilensperren und ein bedingtes Passwortupdate sichern parallele Bestätigungen ab. CLI-Rücksetzung bleibt unabhängig von SMTP nutzbar.
+
+## Ergänzung 08.11.2026: Bildverwendbarkeit
+
+`unusable_learning.py` trainiert zusätzliche Verwendbarkeitsköpfe pro Tag-/Nachtmodus im bestehenden V2-Job. Explizite menschliche Negativlabels bleiben in `TrainingSample` und Datensatz-/Restore-Snapshots erhalten, werden aus der Füllstandsregression ausgeschlossen und mit vollständigem Kamerabild ausgewertet. `vision.LocalForestAnalyzer` prüft freigegebene Köpfe vor der Füllstandsregression. Ungeeignete/unsichere Bilder liefern keinen Füllstand; `analyze_buffer` erzeugt dafür niemals automatische Messwerte. Automatische Erkennung erzeugt keine bestätigten Trainingslabels. Migration 0010; alte JSON-Artefakte kompatibel; keine zusätzlichen Abhängigkeiten.

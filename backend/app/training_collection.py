@@ -37,18 +37,16 @@ from .models import (
     TrainingSample,
 )
 from .training_store import (
-    LIMIT,
     automatic_open_count,
     cleanup_discarded,
-    oldest_open_time,
     rebalance_window,
 )
 from .vision import image_features, transform_key
 
 
-def training_paths(pattern, timezone, now, root):
+def training_paths(pattern, timezone, now, root, days=7):
     pattern = validate_pattern(pattern)
-    start = (now - timedelta(hours=168)).astimezone(ZoneInfo(timezone)).date()
+    start = (now - timedelta(days=days)).astimezone(ZoneInfo(timezone)).date()
     end = now.astimezone(ZoneInfo(timezone)).date()
     year, month = root_context(root)
     if "YYYY" not in pattern.split("/") and (
@@ -92,6 +90,8 @@ def collection_context(camera, connection):
                 camera.detected_date_pattern,
                 camera.timezone,
                 key,
+                camera.image_retention_days,
+                "continuous-v2",
             ],
             sort_keys=True,
         ).encode()
@@ -100,10 +100,11 @@ def collection_context(camera, connection):
 
 
 def collect_training(db, camera_id, progress=None):
-    camera = db.get(Camera, camera_id, populate_existing=True)
+    camera = db.get(Camera, camera_id, with_for_update=True, populate_existing=True)
     cleanup_discarded(db, camera_id)
     rebalance_window(db, camera_id)
     if not camera.learning_enabled or not camera.ftp_connection_id:
+        db.commit()
         return 0
     state = db.get(TrainingCollection, camera_id)
     if not state:
@@ -126,10 +127,10 @@ def collect_training(db, camera_id, progress=None):
         and state.scanned_at
         and utcnow() - aware(state.scanned_at) < timedelta(hours=1)
     ):
-        state.status = "full" if automatic_open_count(db, camera_id) >= LIMIT else "exhausted"
+        state.status = "exhausted"
         db.commit()
         return 0
-    now, cutoff = utcnow(), utcnow() - timedelta(hours=168)
+    now, cutoff = utcnow(), utcnow() - timedelta(days=camera.image_retention_days)
     deadline, ftp, added = time.monotonic() + 30, None, 0
 
     def tick(*_):
@@ -159,13 +160,9 @@ def collect_training(db, camera_id, progress=None):
             if not pattern:
                 layout = detect_layout(ftp, root, budget)
                 pattern = layout[0] if layout else None
-            if not pattern:
-                raise ImportFailure(
-                    "training_layout",
-                    "Für die Trainingssammlung wurde keine eindeutige Datumsstruktur erkannt. Datumsmuster und FTP-Root konfigurieren.",
-                )
             scan_state = state.scan_json or {}
-            paths = list(scan_state.get("paths", training_paths(pattern, camera.timezone, now, root)))
+            defaults = training_paths(pattern, camera.timezone, now, root, camera.image_retention_days) if pattern else [""]
+            paths = list(scan_state.get("paths", defaults))
             files = {row["path"]: RemoteFile(**row) for row in scan_state.get("files", [])}
             while paths:
                 tick()
@@ -193,8 +190,13 @@ def collect_training(db, camera_id, progress=None):
             known = {
                 fingerprint
                 for fingerprint, record in records.items()
-                if record.state in {"pending", "confirmed", "discarded"}
+                if record.state in {"pending", "confirmed", "discarded", "expired"}
             }
+            known.update(db.scalars(select(TrainingSample.source_fingerprint).where(
+                TrainingSample.camera_id == camera_id, TrainingSample.transform_key == key,
+                TrainingSample.source_fingerprint.is_not(None),
+                TrainingSample.queue_state.in_(["pending", "confirmed", "discarded", "expired"]),
+            )))
             known.update(
                 db.scalars(
                     select(ImportRecord.fingerprint)
@@ -222,14 +224,6 @@ def collect_training(db, camera_id, progress=None):
                 break
             remote = RemoteFile(**candidates[0])
             stamp = remote_time(remote.modified)
-            oldest = oldest_open_time(db, camera_id)
-            if (
-                automatic_open_count(db, camera_id) >= LIMIT
-                and oldest is not None
-                and stamp is not None
-                and stamp <= oldest
-            ):
-                break
             if not retry_allowed(db, camera_id, remote):
                 candidates.pop(0)
                 state.candidates_json = list(candidates)
@@ -327,7 +321,7 @@ def collect_training(db, camera_id, progress=None):
                     db.add(sample)
                     db.flush()
                     added += 1
-                if not sample.discarded_at and not sample.approved:
+                if not sample.discarded_at and not sample.approved and sample.queue_state != "expired":
                     from .ml_service import sample_path
 
                     path = sample_path(sample)
@@ -360,7 +354,7 @@ def collect_training(db, camera_id, progress=None):
             candidates.pop(0)
             state.candidates_json = list(candidates)
             db.commit()
-        state.status = "full" if automatic_open_count(db, camera_id) >= LIMIT else "waiting" if candidates else "exhausted"
+        state.status = "waiting" if candidates else "exhausted"
         state.error = None
         db.commit()
     except Exception as exc:

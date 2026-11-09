@@ -1,4 +1,4 @@
-"""FTP-Import, Metadaten-Deduplizierung und strikt begrenzter Bildpuffer."""
+"""FTP-Import, Deduplizierung und zeitliche Bildaufbewahrung."""
 
 import hashlib
 import io
@@ -6,7 +6,7 @@ import logging
 import os
 import ssl
 import warnings
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from ftplib import FTP, FTP_TLS
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -125,30 +125,39 @@ def prepare_image(
 
 
 def reconcile(db: Session, camera: Camera) -> None:
-    """Nach Absturz DB/Dateien abgleichen, Orphans löschen, niemals ein Archiv aufbauen."""
+    """Zeitliche Aufbewahrung; neueste Vorschau unabhängig vom Alter erhalten."""
+    from .training_store import collect_buffer, cleanup_deferred, cleanup_discarded
+
+    camera = db.get(Camera, camera.id, with_for_update=True, populate_existing=True)
+    collect_buffer(db, camera)
+    cutoff = utcnow() - timedelta(days=camera.image_retention_days)
+    latest = db.scalar(select(ImageBuffer.id).where(ImageBuffer.camera_id == camera.id).order_by(
+        ImageBuffer.captured_at.desc(), ImageBuffer.imported_at.desc()).limit(1))
+    for row in db.scalars(select(ImageBuffer).where(
+        ImageBuffer.camera_id == camera.id, ImageBuffer.id != latest,
+        ImageBuffer.imported_at < cutoff,
+        # Noch nicht gesicherte Lernbilder zunächst nachholen.
+        ImageBuffer.learning_collected.is_(True) if camera.learning_enabled else True,
+    ).limit(500)):
+        image_path(row).unlink(missing_ok=True)
+        db.delete(row)
     directory = settings().data_dir / "buffer" / camera.id
     directory.mkdir(parents=True, exist_ok=True)
-    rows = list(
-        db.scalars(
-            select(ImageBuffer)
-            .where(ImageBuffer.camera_id == camera.id)
-            .order_by(ImageBuffer.captured_at.desc(), ImageBuffer.imported_at.desc())
-        )
-    )
-    keep: set[str] = set()
-    for row in rows:
-        if len(keep) < 3 and image_path(row).is_file():
-            keep.add(row.filename)
-        else:
-            image_path(row).unlink(missing_ok=True)
-            db.delete(row)
     for path in directory.iterdir():
-        if path.is_file() and path.name not in keep:
-            path.unlink()
+        if path.is_file() and not db.scalar(select(ImageBuffer.id).where(
+            ImageBuffer.camera_id == camera.id, ImageBuffer.filename == path.name
+        ).limit(1)):
+            path.unlink(missing_ok=True)
+    for row in db.scalars(select(ImageBuffer).where(ImageBuffer.camera_id == camera.id).execution_options(yield_per=200)):
+        if not image_path(row).is_file():
+            db.delete(row)
+    cleanup_deferred(db, camera.id)
+    cleanup_discarded(db, camera.id)
     db.commit()
 
 
 def ingest(db: Session, camera: Camera, remote: RemoteFile, raw: bytes) -> bool:
+    camera = db.get(Camera, camera.id, with_for_update=True, populate_existing=True)
     if db.scalar(
         select(ImportRecord.id).where(
             ImportRecord.camera_id == camera.id,
@@ -198,23 +207,6 @@ def ingest(db: Session, camera: Camera, remote: RemoteFile, raw: bytes) -> bool:
         ) from exc
     directory = settings().data_dir / "buffer" / camera.id
     directory.mkdir(parents=True, exist_ok=True)
-    # Bytes werden im RAM validiert. Erst vor dem atomaren Schreiben einen Platz freigeben.
-    existing = list(
-        db.scalars(
-            select(ImageBuffer)
-            .where(ImageBuffer.camera_id == camera.id)
-            .order_by(ImageBuffer.captured_at, ImageBuffer.imported_at)
-        )
-    )
-    if len(existing) >= 3 and captured < aware(existing[0].captured_at):
-        record.status = "older"
-        db.add(record)
-        db.commit()
-        return False
-    for row in existing[: max(0, len(existing) - 2)]:
-        image_path(row).unlink(missing_ok=True)
-        db.delete(row)
-    db.flush()
     filename = uuid4().hex + ".jpg"
     target = directory / filename
     # Ein einzelner Worker besitzt die Schreibsperre. Abgebrochene Dateien räumt reconcile auf.
@@ -225,8 +217,7 @@ def ingest(db: Session, camera: Camera, remote: RemoteFile, raw: bytes) -> bool:
             os.fsync(handle.fileno())
         db.add(record)
         db.flush()
-        db.add(
-            ImageBuffer(
+        image = ImageBuffer(
                 camera_id=camera.id,
                 import_id=record.id,
                 filename=filename,
@@ -235,13 +226,21 @@ def ingest(db: Session, camera: Camera, remote: RemoteFile, raw: bytes) -> bool:
                 transform_key=transform_key(camera.image_rotation, camera.image_flip),
                 size_bytes=len(content),
             )
-        )
+        db.add(image)
         camera.last_import_at = utcnow()
         db.commit()
     except Exception:
         db.rollback()
         target.unlink(missing_ok=True)
         raise
+    try:
+        from .training_store import collect_buffer
+
+        collect_buffer(db, camera)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.warning("event=learning_capture_deferred camera=%s type=%s", camera.id, type(exc).__name__)
     return True
 
 

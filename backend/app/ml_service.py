@@ -319,6 +319,9 @@ def train_model_v2(db: Session, model: ModelVersion, progress: Callable | None =
     model.status, model.error = "running", None
     db.commit()
     try:
+        from .unusable_learning import train_unusable
+
+        unusable_heads, unusable_reports = train_unusable(db, model, progress)
         geometry, legacy, targets, groups, modes = [], [], [], [], []
         legacy_version = (
             POLYGON_FEATURE_VERSION
@@ -326,6 +329,8 @@ def train_model_v2(db: Session, model: ModelVersion, progress: Callable | None =
             else FEATURE_VERSION
         )
         for index, row in enumerate(model.dataset_json):
+            if row.get("rejection_reason"):
+                continue
             sample = db.get(TrainingSample, row["id"])
             if not sample or sample.file_hash != row["hash"]:
                 raise ValueError("Ein ausgewähltes Trainingsbild fehlt oder wurde verändert.")
@@ -487,6 +492,7 @@ def train_model_v2(db: Session, model: ModelVersion, progress: Callable | None =
             "feature_version": GEOMETRY_FEATURE_VERSION,
             "mode_quality": reports,
             "challenger_passed": bool(improved and safe),
+            "unusable_quality": unusable_reports,
         }
         artifact = {
             "schema": 2,
@@ -495,6 +501,7 @@ def train_model_v2(db: Session, model: ModelVersion, progress: Callable | None =
             "config": model.config_json,
             "metrics": metrics,
             "heads": heads,
+            "unusable_heads": unusable_heads,
             "fallback": fallback_head,
             "image_modes": sorted(set(modes.tolist())),
         }
@@ -548,7 +555,13 @@ def run_training_job(progress_factory: Callable | None = None) -> bool:
         camera = db.get(
             Camera, model.camera_id, with_for_update=True, populate_existing=True
         )
-        if model.managed and not camera.learning_enabled:
+        db.refresh(model)
+        if model.status != "queued" or (model.managed and not camera.learning_enabled):
+            return False
+        if model.trigger == "automatic" and camera.training_mode != "automatic":
+            model.status, model.finished_at = "cancelled", utcnow()
+            camera.learning_dirty = True
+            db.commit()
             return False
         db.execute(
             update(WorkerStatus)
@@ -646,8 +659,16 @@ def analyze_buffer(
     images = list(
         db.scalars(
             select(ImageBuffer)
-            .where(ImageBuffer.camera_id == camera.id)
-            .order_by(ImageBuffer.captured_at)
+            .where(
+                ImageBuffer.camera_id == camera.id,
+                ~select(Measurement.id).where(Measurement.source_import_id == ImageBuffer.import_id).exists(),
+                ~select(AnalysisResult.id).where(
+                    AnalysisResult.source_import_id == ImageBuffer.import_id,
+                    AnalysisResult.model_id.in_([model.id for model in models]),
+                ).exists(),
+            )
+            .order_by(ImageBuffer.captured_at.desc())
+            .limit(settings().max_imports_per_cycle)
         )
     )
     analyzed = 0
@@ -716,28 +737,14 @@ def analyze_buffer(
             image.image_mode = result.image_mode
             sample = capture_review_sample(db, camera, image)
             result.review_sample_id = sample.id if sample else None
-            result.review_visible = camera.learning_enabled and sample is not None
+            result.review_visible = camera.learning_enabled and sample is not None and not sample.approved
             if sample is None and result.confidence < camera.min_confidence:
                 result.status = "skipped"
-                if camera.learning_enabled:
-                    from .training_store import LIMIT, automatic_open_count
-
-                if (
-                    camera.learning_enabled
-                    and automatic_open_count(db, camera.id) >= LIMIT
-                ):
-                    result.reason = " ".join(
-                        filter(
-                            None,
-                            [
-                                result.reason,
-                                "Prüfliste voll: Das Bild gehört nicht zu den 50 neuesten verfügbaren Referenzen.",
-                            ],
-                        )
-                    )
             db.add(result)
             db.flush()
-            if result.confidence >= camera.min_confidence:
+            if analysis.unusable:
+                result.status = "discarded"
+            elif analysis.fill_level_percent is not None and result.confidence >= camera.min_confidence:
                 create_analysis_measurement(db, result, camera)
             else:
                 result.reason = (
@@ -774,15 +781,15 @@ def analyze_buffer(
 def capture_review_sample(
     db: Session, camera: Camera, image: ImageBuffer, *, explicit: bool = False
 ) -> TrainingSample | None:
-    """Prüfbild vor der Drei-Bilder-Bereinigung in den Trainingsspeicher kopieren."""
+    """Importiertes Bild unabhängig vom Modell als Lernreferenz sichern."""
     if not camera.learning_enabled and not explicit:
         return None
-    if db.scalar(
-        select(AnalysisResult.id).where(
-            AnalysisResult.source_import_id == image.import_id,
-            AnalysisResult.discarded_at.is_not(None),
-        )
-    ):
+    discarded = db.scalar(select(AnalysisResult).where(
+        AnalysisResult.source_import_id == image.import_id,
+        AnalysisResult.discarded_at.is_not(None),
+    ))
+    if discarded:
+        image.training_sample_id = discarded.review_sample_id
         return None
     content = image_path(image).read_bytes()
     digest = hashlib.sha256(content).hexdigest()
@@ -791,7 +798,9 @@ def capture_review_sample(
             TrainingSample.camera_id == camera.id, TrainingSample.file_hash == digest
         )
     )
-    if existing and existing.discarded_at:
+    if existing:
+        image.training_sample_id = existing.id
+    if existing and (existing.discarded_at or existing.queue_state == "expired"):
         return None
     if existing:
         if existing.queue_state == "deferred" and not existing.approved:
@@ -832,8 +841,11 @@ def capture_review_sample(
         handle.write(content)
         handle.flush()
         os.fsync(handle.fileno())
+    sample.image_mode = image_features(path, camera.roi_json or {"x": 0, "y": 0, "width": 1, "height": 1})[1]
+    image.image_mode = sample.image_mode
     db.add(sample)
     db.flush()
+    image.training_sample_id = sample.id
     from .training_store import rebalance_window
 
     rebalance_window(db, camera.id)
@@ -842,12 +854,13 @@ def capture_review_sample(
     return sample
 
 
-def eligible_samples(db, camera, image_mode="all"):
+def eligible_samples(db, camera, image_mode="all", *, include_unusable=False):
     query = select(TrainingSample).where(
         TrainingSample.camera_id == camera.id,
         TrainingSample.approved.is_(True),
         TrainingSample.discarded_at.is_(None),
-        TrainingSample.target_fill_level.is_not(None),
+        or_(TrainingSample.target_fill_level.is_not(None),
+            TrainingSample.rejection_reason.is_not(None) if include_unusable else False),
         TrainingSample.transform_key
         == transform_key(camera.image_rotation, camera.image_flip),
     )
@@ -859,15 +872,15 @@ def eligible_samples(db, camera, image_mode="all"):
 
 
 def training_ready(selected):
-    targets = [s.target_fill_level for s in selected]
+    targets = [s.target_fill_level for s in selected if s.target_fill_level is not None and not s.rejection_reason]
     return (
-        len(selected) >= 12
+        len(targets) >= 12
         and len(set(targets)) >= 3
         and max(targets, default=0) - min(targets, default=0) >= 40
     )
 
 
-def enqueue_model(db, camera, name, image_mode, user_id, *, managed=False, force=False):
+def enqueue_model(db, camera, name, image_mode, user_id, *, managed=False, force=False, trigger="manual"):
     if not camera.roi_json:
         raise ValueError("Zuerst den relevanten Bildbereich (ROI) speichern.")
     if db.scalar(
@@ -877,7 +890,7 @@ def enqueue_model(db, camera, name, image_mode, user_id, *, managed=False, force
         )
     ):
         raise ValueError("Für diese Kamera steht bereits ein Training aus.")
-    selected = eligible_samples(db, camera, image_mode)
+    selected = eligible_samples(db, camera, image_mode, include_unusable=True)
     if not training_ready(selected):
         raise ValueError(
             "Mindestens 12 freigegebene Bilder, drei Soll-Füllstände und 40 Prozentpunkte Spannweite benötigt. Empfohlen: 30–50 Bilder aus mehreren Serien."
@@ -893,6 +906,7 @@ def enqueue_model(db, camera, name, image_mode, user_id, *, managed=False, force
                     ModelVersion.camera_id == camera.id,
                     ModelVersion.managed.is_(True),
                     ModelVersion.learning_generation == camera.learning_generation,
+                    ModelVersion.status != "cancelled",
                 )
             )
         )
@@ -903,6 +917,7 @@ def enqueue_model(db, camera, name, image_mode, user_id, *, managed=False, force
         camera_id=camera.id,
         name=name,
         managed=managed,
+        trigger=trigger,
         learning_generation=camera.learning_generation,
         version=utcnow().strftime("%Y%m%d-%H%M%S") + "-" + uuid4().hex[:6],
         image_mode=image_mode,
@@ -924,7 +939,7 @@ def queue_learning_jobs():
         ids = list(
             db.scalars(
                 select(Camera.id).where(
-                    Camera.learning_enabled.is_(True), Camera.learning_dirty.is_(True)
+                    Camera.learning_enabled.is_(True), Camera.learning_dirty.is_(True), Camera.training_mode == "automatic"
                 )
             )
         )
@@ -937,11 +952,11 @@ def queue_learning_jobs():
                 .order_by(User.created_at)
                 .limit(1)
             )
-            if not camera.learning_enabled or not admin:
+            if not camera.learning_enabled or camera.training_mode != "automatic" or not admin:
                 continue
             try:
                 enqueue_model(
-                    db, camera, "Gemeinsamer Lernstand", "all", admin.id, managed=True
+                    db, camera, "Gemeinsamer Lernstand", "all", admin.id, managed=True, trigger="automatic"
                 )
                 db.commit()
             except ValueError:
@@ -1006,6 +1021,8 @@ def preserve_review_references(db, camera):
     camera = db.get(Camera, camera.id, with_for_update=True, populate_existing=True)
     if not camera.learning_enabled:
         return
+    from .training_store import collect_buffer
+    collect_buffer(db, camera)
     results = list(
         db.scalars(
             select(AnalysisResult)

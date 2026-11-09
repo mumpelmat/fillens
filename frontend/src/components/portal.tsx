@@ -15,7 +15,6 @@ import {
   ArrowUpRight,
   Camera as CameraIcon,
   Check,
-  ChevronDown,
   CircleHelp,
   Database,
   Droplets,
@@ -29,7 +28,6 @@ import {
   RefreshCw,
   Settings2,
   ShieldCheck,
-  SlidersHorizontal,
   Timer,
   Trash2,
   Users,
@@ -48,6 +46,9 @@ import {
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import Training from "@/components/training";
+import FTPTest from "@/components/ftp-test";
+import PasswordRecovery from "@/components/password-recovery";
+import { ContainerTabs, ContainerSettings, MeasurementKpis, measurementView, useDetailHistory, useOverviewHistories } from "@/components/dashboard";
 import {
   RateHistory,
   Events,
@@ -62,9 +63,6 @@ import {
   number,
   unit,
   write,
-  dashboardLevelTone,
-  rateFactor,
-  rateUnit,
   type ContainerEvent,
   type Container,
   type FTPConnection,
@@ -79,7 +77,6 @@ const SOURCE_URL = "https://github.com/mumpelmat/fillens";
 type Page =
   | "dashboard"
   | "containers"
-  | "history"
   | "training"
   | "users"
   | "system"
@@ -92,18 +89,16 @@ type ModalState =
   | { kind: "user" };
 const titles: Record<Page, string> = {
   notifications: "Benachrichtigungen",
-  dashboard: "Übersicht",
+  dashboard: "Dashboard",
   containers: "Anlagen & Behälter",
-  history: "Messwertverlauf",
   users: "Benutzerverwaltung",
   system: "System & Verbindungen",
   training: "Bilder bestätigen & lernen",
 };
 const navigation = [
   { id: "notifications" as Page, label: "Meldungen", icon: Bell },
-  { id: "dashboard" as Page, label: "Übersicht", icon: LayoutDashboard },
+  { id: "dashboard" as Page, label: "Dashboard", icon: LayoutDashboard },
   { id: "containers" as Page, label: "Anlagen", icon: Warehouse },
-  { id: "history" as Page, label: "Verlauf", icon: Activity },
   {
     id: "training" as Page,
     label: "Training",
@@ -275,6 +270,8 @@ function CameraPreview({
 }
 
 function Login({ onLogin }: { onLogin: (user: User) => void }) {
+  const [recovering, setRecovering] = useState(false);
+  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -330,10 +327,11 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
         </span>
       </section>
       <section className="login-form">
-        <form onSubmit={submit}>
+        {recovering ? <PasswordRecovery onBack={(message) => { setRecovering(false); setNotice(message || ""); setError(""); }} /> : <form onSubmit={submit}>
           <span className="eyebrow">FÜLLSTANDSPORTAL</span>
           <h2>Willkommen zurück</h2>
           <p>Melden Sie sich mit Ihrem Benutzerkonto an.</p>
+          {notice && <div className="success-notice" role="status">{notice}</div>}
           {error && <ErrorNotice message={error} />}
           <Field label="E-Mail">
             <input
@@ -357,10 +355,11 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
             {busy ? <LoaderCircle className="spin" size={16} /> : null}Anmelden{" "}
             <ArrowUpRight size={16} />
           </Button>
+          <Button type="button" variant="ghost" className="w-full" disabled={busy} onClick={() => { setRecovering(true); setNotice(""); }}>Passwort vergessen?</Button>
           <small>
             Das erste Administratorkonto wird bei der Installation angelegt.
           </small>
-        </form>
+        </form>}
       </section>
     </main>
   );
@@ -650,6 +649,7 @@ function FTPForm({ item }: { item?: FTPConnection }) {
           required
         />
       </Field>
+      <FTPTest connection={item} />
     </>
   );
 }
@@ -700,6 +700,7 @@ function CameraForm({
           placeholder="z. B. kamera1/bilder"
         />
       </Field>
+      <FTPTest connections={connections} />
       <Field
         label="Zeitzone der Kamera"
         hint="Für EXIF-Zeitstempel und die Auswahl aktueller Tagesordner. FTP-Zeitstempel gelten als UTC."
@@ -820,8 +821,10 @@ function History({
   sampled,
   loading,
   compact = false,
+  showPeriod = true,
 }: {
   compact?: boolean;
+  showPeriod?: boolean;
   events: ContainerEvent[];
   container: Container;
   period: string;
@@ -840,7 +843,7 @@ function History({
           <h2>Füllstand im Verlauf</h2>
           <p>Gespeicherte Messwerte · {container.camera.timezone}</p>
         </div>
-        <select
+        {showPeriod && <select
           className="period-select"
           aria-label="Zeitraum"
           value={period}
@@ -851,7 +854,7 @@ function History({
               {p.name}
             </option>
           ))}
-        </select>
+        </select>}
       </div>
       {loading ? (
         <div className="chart-loading">
@@ -878,7 +881,7 @@ function History({
               >
                 <defs>
                   <linearGradient
-                    id="fill-gradient"
+                    id={`fill-gradient-${container.id}`}
                     x1="0"
                     y1="0"
                     x2="0"
@@ -968,7 +971,7 @@ function History({
                   dataKey="effective_fill_level"
                   stroke="#237c60"
                   strokeWidth={2.5}
-                  fill="url(#fill-gradient)"
+                  fill={`url(#fill-gradient-${container.id})`}
                   dot={
                     items.length < 20
                       ? { r: 3, strokeWidth: 2, fill: "#fff" }
@@ -995,6 +998,41 @@ function History({
   );
 }
 
+function ContainerOverviewCard({ container, site, admin, data, period, setPeriod, onOpen, onSettings, onRefresh }: {
+  container: Container; site: string; admin: boolean; data: ReturnType<typeof useDetailHistory>;
+  period: string; setPeriod: (period: string) => void; onOpen: () => void;
+  onSettings: (action: "container" | "camera" | "rules") => void; onRefresh: () => void;
+}) {
+  const view = measurementView(container);
+  const timezone = container.camera.timezone;
+  return <article className="panel fleet-card" aria-label={container.name}>
+    <div className="panel-head">
+      <div><h2>{container.name}</h2><p>{site} · {container.camera.name}</p></div>
+      {admin && <ContainerSettings name={container.name} onAction={onSettings} />}
+    </div>
+    <div className="fleet-status">
+      <Badge tone={!container.active ? "neutral" : container.alert_severity ? "amber" : "green"}>
+        {!container.active ? "Behälter inaktiv" : container.alert_severity === 2 ? "Warnung" : container.alert_severity ? "Hinweis" : "Behälter aktiv"}
+      </Badge>
+      <span>{!container.camera.active ? "Kamera inaktiv" : container.camera.analysis_enabled ? "Lokale Auswertung" : "Manueller Betrieb"}</span>
+      {container.active && container.alert_severity > 0 && <span>Aktive Meldung zum übernommenen Füllstand</span>}
+    </div>
+    {container.current_image ? <CameraPreview key={container.current_image.id} image={container.current_image}
+      name={container.name} timezone={timezone} onRefresh={onRefresh} />
+      : <Empty icon={CameraIcon} title="Noch kein Kamerabild">Für diesen Behälter ist noch kein Bild verfügbar.</Empty>}
+    <div className="fleet-metrics"><MeasurementKpis container={container} /></div>
+    <div className="fleet-times">
+      <span>Bild: {container.current_image ? date(container.current_image.captured_at, timezone) : "Noch keines vorhanden"}</span>
+      <span>Letzte Messung: {view.measured ? `${number(view.measured.effective_fill_level)} % · ${date(view.measured.measured_at, timezone)}` : "Noch keine übernommen"}</span>
+      {view.estimated && <strong>Aktuelle Anzeige geschätzt · noch nicht als Messwert übernommen</strong>}
+    </div>
+    {data.error ? <div className="fleet-history-error"><ErrorNotice message={data.error} /></div> : <History container={container}
+      period={period} setPeriod={setPeriod} items={data.items} total={data.total_count} sampled={data.sampled}
+      loading={data.loading} events={[]} compact showPeriod={false} />}
+    <div className="fleet-actions"><Button variant="outline" onClick={onOpen}>Messungen ansehen <ArrowUpRight size={15} /></Button></div>
+  </article>;
+}
+
 export default function Portal({
   initialPage = "dashboard",
 }: {
@@ -1008,6 +1046,8 @@ export default function Portal({
   const [containersLoaded, setContainersLoaded] = useState(false);
   const [sites, setSites] = useState<Site[]>([]);
   const [selected, setSelected] = useState("");
+  const [overview, setOverview] = useState(true);
+  const [focusRules, setFocusRules] = useState(false);
   const [connections, setConnections] = useState<FTPConnection[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [status, setStatus] = useState<Status | null>(null);
@@ -1017,16 +1057,28 @@ export default function Portal({
   const [refreshing, setRefreshing] = useState(false);
   const [requestingRun, setRequestingRun] = useState(false);
   const [period, setPeriod] = useState("7d");
-  const [history, setHistory] = useState<Measurement[]>([]);
-  const [events, setEvents] = useState<ContainerEvent[]>([]);
-  const [total, setTotal] = useState(0);
-  const [sampled, setSampled] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
   const [historyRevision, setHistoryRevision] = useState(0);
   const admin = user?.role === "admin";
   const trainingContainers = admin ? containers : containers.filter((c) => c.camera.learning_enabled);
   const canTrain = admin || trainingContainers.length > 0;
   const current = containers.find((c) => c.id === selected) || containers[0];
+  const detail = useDetailHistory(page === "dashboard" && !overview ? current?.id : undefined, period, historyRevision);
+  const { items: history, events, total_count: total, sampled, loading: historyLoading } = detail;
+  const overviewHistory = useOverviewHistories(containers, period, historyRevision, page === "dashboard" && overview);
+  const siteName = (id: string) => sites.find((site) => site.id === id)?.name || "";
+  const openContainer = (id: string) => { setSelected(id); setOverview(false); setPage("dashboard"); };
+  const openSettings = (item: Container, action: "container" | "camera" | "rules") => {
+    setSelected(item.id);
+    if (action === "rules") { setPage("containers"); setFocusRules(true); }
+    else setModal({ kind: action, item });
+  };
+  useEffect(() => {
+    if (page === "containers" && focusRules) {
+      const element = document.getElementById("container-rules");
+      element?.scrollIntoView({ block: "start" }); element?.focus({ preventScroll: true });
+      setFocusRules(false);
+    }
+  }, [page, focusRules]);
   useEffect(() => {
     if (user?.role === "user" && (["users", "system"].includes(page) || page === "training" && containersLoaded && !canTrain))
       setPage("dashboard");
@@ -1112,39 +1164,6 @@ export default function Portal({
       clearTimeout(timer);
     };
   }, [admin]);
-  useEffect(() => {
-    if (!current) return;
-    let active = true;
-    setHistoryLoading(true);
-    Promise.all([
-      api<{ items: Measurement[]; total_count: number; sampled: boolean }>(
-        `/containers/${current.id}/measurements?period=${period}`,
-      ),
-      api<ContainerEvent[]>(`/containers/${current.id}/events`),
-    ])
-      .then(([data, ev]) => {
-        if (active) {
-          setHistory(data.items);
-          setEvents(ev);
-          setTotal(data.total_count);
-          setSampled(data.sampled);
-        }
-      })
-      .catch((e) => {
-        if (active) {
-          setHistory([]);
-          setEvents([]);
-          setTotal(0);
-          setError(e.message);
-        }
-      })
-      .finally(() => {
-        if (active) setHistoryLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [current?.id, period, historyRevision]);
   async function systemRefresh() {
     setRequestingRun(true);
     setError("");
@@ -1262,6 +1281,7 @@ export default function Portal({
       await api("/auth/logout", { method: "POST" });
       setUser(null);
       setPage("dashboard");
+      setOverview(true);
       setModal(null);
       setError("");
       setSuccess("");
@@ -1283,6 +1303,7 @@ export default function Portal({
           setContainersLoaded(false);
           setContainers([]);
           setUser(value);
+          setOverview(true);
           setPage(
             value.role === "admin" ||
               !["users", "system"].includes(initialPage)
@@ -1296,53 +1317,10 @@ export default function Portal({
   const measured = current?.current_measurement;
   const currentUnit = unit(current?.capacity_unit || "liter");
   const timezone = current?.camera.timezone || "Europe/Berlin";
-  const factor = rateFactor(current?.rate_time_unit || "hour");
-  const shownRate =
-    current?.operating_rate_absolute == null
-      ? null
-      : current.operating_rate_absolute * factor;
-  const shownPercentRate =
-    current?.operating_rate_percent == null
-      ? null
-      : current.operating_rate_percent * factor;
-  const rateSuffix = rateUnit(current?.rate_time_unit || "hour");
-  // Unsichere Auswertung des neuesten Bildes: anzeigen, aber nicht als Messwert.
   const imageAnalysis = current?.current_image?.analysis;
-  const estimate =
-    current?.current_image &&
-    !current.current_image.has_measurement &&
-    imageAnalysis?.raw_fill_level != null &&
-    ["pending", "skipped"].includes(imageAnalysis.status)
-      ? imageAnalysis.raw_fill_level
-      : null;
-  const estimated = estimate != null;
-  const userInput =
-    !estimated && !!measured?.analysis_method.startsWith("manual");
-  const shownLevel = estimated ? estimate : measured?.effective_fill_level;
-  const shownAbsolute =
-    estimated && current
-      ? (current.capacity * estimate) / 100
-      : current?.absolute_level;
-  const levelTone = dashboardLevelTone(
-    current?.display_mode || "fill",
-    shownLevel,
-  );
-  const toneLabel =
-    levelTone === "red"
-      ? current?.display_mode === "consumption"
-        ? "Sehr niedrig"
-        : "Sehr hoch"
-      : levelTone === "orange"
-        ? current?.display_mode === "consumption"
-          ? "Niedrig"
-          : "Hoch"
-        : "";
-  const levelLabel =
-    levelTone === "unknown"
-      ? "Noch keine Messung"
-      : [estimated ? "Geschätzt" : userInput ? "Nutzereingabe" : "", toneLabel]
-          .filter(Boolean)
-          .join(" · ") || "Aktuell";
+  const view = current ? measurementView(current) : null;
+  const estimated = view?.estimated || false;
+  const levelTone = view?.tone || "unknown";
   const canReview =
     imageAnalysis?.status === "pending" &&
     (admin || !!current?.camera.learning_enabled);
@@ -1363,6 +1341,7 @@ export default function Portal({
                 className={page === n.id ? "active" : ""}
                 onClick={() => {
                   setPage(n.id);
+                  if (n.id === "dashboard") setOverview(true);
                   setMenu(false);
                 }}
               >
@@ -1408,12 +1387,6 @@ export default function Portal({
           </div>
           <div className="topbar-right">
             {admin && <WorkerIndicator status={status} />}
-            <span className="manual-mode">
-              <span />{" "}
-              {current?.camera.analysis_enabled
-                ? "Lokale Auswertung"
-                : "Manueller Betrieb"}
-            </span>
             <span className="header-avatar">{user.email[0].toUpperCase()}</span>
           </div>
         </header>
@@ -1423,14 +1396,12 @@ export default function Portal({
           <div className="page-heading">
             <div>
               <span className="eyebrow">FÜLLSTANDSPORTAL</span>
-              <h1>{titles[page]}</h1>
+              <h1>{page === "dashboard" && !overview && current ? `Messungen · ${current.name}` : titles[page]}</h1>
               <p>
                 {page === "dashboard"
                   ? "Aktuelle Füllstände. Klare Entscheidungen."
                   : page === "containers"
                     ? "Standorte, Kapazitäten und Kameras verwalten."
-                    : page === "history"
-                      ? "Jede Messung bleibt. Auch wenn das Bild längst gelöscht ist."
                       : page === "users"
                         ? "Zugriff gezielt vergeben und verwalten."
                         : page === "training"
@@ -1521,7 +1492,25 @@ export default function Portal({
               </button>
             </div>
           )}
-          {(page === "dashboard" || page === "history") &&
+          {page === "dashboard" && containers.length > 0 && <>
+            <ContainerTabs containers={containers} selected={overview ? "all" : current.id} siteName={siteName}
+              onSelect={(id) => { if (id === "all") setOverview(true); else openContainer(id); }} />
+            {overview && <div id="dashboard-content" role="tabpanel" aria-labelledby="tab-all">
+              <div className="overview-toolbar"><span>{containers.length} Behälter</span>
+                <label>Zeitraum für alle Verläufe <select className="period-select" value={period} onChange={(event) => setPeriod(event.target.value)}>
+                  {periodOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                </select></label>
+              </div>
+              <div className="fleet-grid">
+                {containers.map((container) => <ContainerOverviewCard key={container.id}
+                  container={container} site={siteName(container.site_id)} admin={admin}
+                  data={overviewHistory(container.id)} period={period} setPeriod={setPeriod}
+                  onOpen={() => openContainer(container.id)} onSettings={(action) => openSettings(container, action)}
+                  onRefresh={() => void refresh()} />)}
+              </div>
+            </div>}
+          </>}
+          {page === "dashboard" && (!current || !overview) &&
             (!current ? (
               <section className="panel">
                 <Empty
@@ -1546,33 +1535,14 @@ export default function Portal({
                 </Empty>
               </section>
             ) : (
-              <>
+              <div id="dashboard-content" role="tabpanel" aria-labelledby={`tab-${current.id}`}>
                 <div className="selection-bar">
                   <div>
                     <span className="container-symbol">
                       <Trash2 size={20} />
                     </span>
                     <div>
-                      <label
-                        htmlFor="container-select"
-                        className="selection-label"
-                      >
-                        BEHÄLTER
-                      </label>
-                      <div className="select-wrap">
-                        <select
-                          id="container-select"
-                          value={current.id}
-                          onChange={(e) => setSelected(e.target.value)}
-                        >
-                          {containers.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={16} />
-                      </div>
+                      <strong>{current.name}</strong>
                     </div>
                     <span className="selection-divider" />
                     <span className="site-name">
@@ -1582,6 +1552,7 @@ export default function Portal({
                       </small>
                     </span>
                   </div>
+                  {admin && <ContainerSettings name={current.name} onAction={(action) => openSettings(current, action)} />}
                   <Badge
                     tone={
                       !current.active
@@ -1600,65 +1571,7 @@ export default function Portal({
                 </div>
                 {page === "dashboard" && (
                   <>
-                    <div className="kpi-grid" data-level-tone={levelTone}>
-                      <div
-                        className={`kpi kpi-primary level-tone-${levelTone} ${estimated ? "is-estimated" : ""}`}
-                      >
-                        <div className="kpi-label">
-                          Füllstand
-                          <Gauge size={18} />
-                        </div>
-                        <div className="kpi-value">
-                          {number(shownLevel)}
-                          <span>%</span>
-                        </div>
-                        <small>{levelLabel}</small>
-                      </div>
-                      <div
-                        className={`kpi inventory-kpi level-tone-${levelTone} ${estimated ? "is-estimated" : ""}`}
-                      >
-                        <div className="kpi-label">
-                          Inhalt <Droplets size={18} />
-                        </div>
-                        <div className="kpi-value">
-                          {number(shownAbsolute)}
-                          <span>
-                            {" "}
-                            / {number(current.capacity)} {currentUnit}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="kpi">
-                        <div className="kpi-label">
-                          {current.display_mode === "consumption"
-                            ? "Verbrauch"
-                            : "Füllrate"}
-                          <Activity size={18} />
-                        </div>
-                        {current.rate_status !== "ready" ? (
-                          <p className="rate-pending" role="status">
-                            <LoaderCircle size={16} className="spin" /> Wird neu
-                            berechnet …
-                          </p>
-                        ) : (
-                          <>
-                            <div className="kpi-value">
-                              {number(shownRate, 3)}
-                              <span>
-                                {currentUnit}/{rateSuffix}
-                              </span>
-                            </div>
-                            <div className="rate-secondary">
-                              {number(shownPercentRate, 3)}{" "}
-                              <abbr title="Prozentpunkte der Gesamtkapazität">
-                                pp
-                              </abbr>
-                              /{rateSuffix}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
+                    <MeasurementKpis container={current} />
                     <div
                       className={`overview-status level-tone-${levelTone}`}
                       role="status"
@@ -1666,7 +1579,7 @@ export default function Portal({
                       <span className="overview-mode">
                         {current.display_mode === "fill"
                           ? "Füllen"
-                          : "Verbrauch"}
+                          : "Verbrauch"} · {current.camera.analysis_enabled ? "Lokale Auswertung" : "Manueller Betrieb"}
                       </span>
                       <span>
                         {estimated && current.current_image
@@ -1706,24 +1619,6 @@ export default function Portal({
                             <h2>Aktuelles Kamerabild</h2>
                             <p>{current.camera.name}</p>
                           </div>
-                          {admin ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                setModal({ kind: "camera", item: current })
-                              }
-                            >
-                              <SlidersHorizontal size={14} />
-                              Kamera
-                            </Button>
-                          ) : (
-                            <Badge>
-                              {current.current_image
-                                ? "Live-Puffer"
-                                : "Kein Bild"}
-                            </Badge>
-                          )}
                         </div>
                         {current.current_image ? (
                           <>
@@ -1758,56 +1653,100 @@ export default function Portal({
                           </>
                         ) : (
                           <Empty title="Noch kein Kamerabild">
-                            {current.camera.ftp_connection_id
-                              ? "Der Worker sucht automatisch nach neuen Bildern. Den Importstatus finden Sie unter System."
-                              : "Verbinden Sie die Kamera mit einem FTP-Verzeichnis, um das erste Bild einzulesen."}
+                            {admin
+                              ? current.camera.ftp_connection_id
+                                ? "Der Worker sucht automatisch nach neuen Bildern. Den Importstatus finden Sie unter System."
+                                : "Verbinden Sie die Kamera über die Einstellungen mit einem FTP-Verzeichnis."
+                              : "Für diesen Behälter ist noch kein Kamerabild verfügbar."}
                           </Empty>
                         )}
-                        <div className="panel-bottom">
-                          <span>
-                            <ShieldCheck size={14} />3 Bilder pro Kamera · kein
-                            Bildarchiv
-                          </span>
-                          {admin && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                setModal({ kind: "camera", item: current })
-                              }
-                            >
-                              <SlidersHorizontal size={14} />
-                              Kamera
-                            </Button>
-                          )}
-                        </div>
                       </section>
-                      <History
-                        container={current}
-                        period={period}
-                        setPeriod={setPeriod}
-                        items={history}
-                        total={total}
-                        sampled={sampled}
-                        loading={historyLoading}
-                        events={events}
-                        compact
-                      />
                     </div>
+                    {detail.error ? <ErrorNotice message={detail.error} /> : <History
+                      container={current} period={period} setPeriod={setPeriod}
+                      items={history} total={total} sampled={sampled} loading={historyLoading} events={events}
+                    />}
                   </>
                 )}
-                {page === "history" && (
-                  <History
-                    container={current}
-                    period={period}
-                    setPeriod={setPeriod}
-                    items={history}
-                    total={total}
-                    sampled={sampled}
-                    loading={historyLoading}
-                    events={events}
-                  />
+                <RateHistory
+                  container={current}
+                  items={history}
+                  events={events}
+                  loading={historyLoading}
+                />
+                {history.length > 0 && (
+                  <section className="panel table-panel">
+                    <div className="panel-head">
+                      <div>
+                        <h2>Messwerte</h2>
+                        <p>
+                          {sampled
+                            ? "Gleichmäßig verteilter Auszug aus der Historie"
+                            : "Alle Messwerte im gewählten Zeitraum"}
+                        </p>
+                      </div>
+                      <Badge>{number(total, 0)} Einträge</Badge>
+                    </div>
+                    <div className="table-scroll">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Aufnahmezeit</th>
+                            <th>Füllstand</th>
+                            <th>Inhalt zum Messzeitpunkt</th>
+                            <th>Änderung / h</th>
+                            <th>Modus</th>
+                            <th>Verfahren</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...history].reverse().map((m) => (
+                            <tr key={m.id}>
+                              <td>{date(m.measured_at, timezone)}</td>
+                              <td>
+                                <strong>
+                                  {number(m.effective_fill_level)} %
+                                </strong>
+                              </td>
+                              <td>
+                                {number(m.absolute_level)}{" "}
+                                {unit(m.capacity_unit)}
+                              </td>
+                              <td>
+                                {number(m.change_rate_percent)} %
+                                <small className="block">
+                                  {number(m.change_rate_absolute)}{" "}
+                                  {unit(m.capacity_unit)}/h
+                                </small>
+                              </td>
+                              <td>
+                                {m.image_mode === "day"
+                                  ? "Tag"
+                                  : m.image_mode === "night_ir"
+                                    ? "Nacht / IR"
+                                    : "Unbekannt"}
+                              </td>
+                              <td>
+                                {m.analysis_method === "local_rf_v1"
+                                  ? "Lokales Modell"
+                                  : m.analysis_method === "manual_review_v1"
+                                    ? "Manuell geprüft"
+                                    : "Manuell"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
                 )}
+                <Events
+                  key={current.id}
+                  container={current}
+                  events={events}
+                  admin={admin}
+                  onChanged={refresh}
+                />
                 {page === "dashboard" && (
                   <details className="dashboard-measure-details">
                     <summary>
@@ -1911,86 +1850,7 @@ export default function Portal({
                     </section>
                   </details>
                 )}
-                <RateHistory
-                  container={current}
-                  items={history}
-                  events={events}
-                  loading={historyLoading}
-                />
-                <Events
-                  key={current.id}
-                  container={current}
-                  events={events}
-                  admin={admin}
-                  onChanged={refresh}
-                />
-                {page === "history" && history.length > 0 && (
-                  <section className="panel table-panel">
-                    <div className="panel-head">
-                      <div>
-                        <h2>Messwerte</h2>
-                        <p>
-                          {sampled
-                            ? "Gleichmäßig verteilter Auszug aus der Historie"
-                            : "Alle Messwerte im gewählten Zeitraum"}
-                        </p>
-                      </div>
-                      <Badge>{number(total, 0)} Einträge</Badge>
-                    </div>
-                    <div className="table-scroll">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Aufnahmezeit</th>
-                            <th>Füllstand</th>
-                            <th>Inhalt zum Messzeitpunkt</th>
-                            <th>Änderung / h</th>
-                            <th>Modus</th>
-                            <th>Verfahren</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {[...history].reverse().map((m) => (
-                            <tr key={m.id}>
-                              <td>{date(m.measured_at, timezone)}</td>
-                              <td>
-                                <strong>
-                                  {number(m.effective_fill_level)} %
-                                </strong>
-                              </td>
-                              <td>
-                                {number(m.absolute_level)}{" "}
-                                {unit(m.capacity_unit)}
-                              </td>
-                              <td>
-                                {number(m.change_rate_percent)} %
-                                <small className="block">
-                                  {number(m.change_rate_absolute)}{" "}
-                                  {unit(m.capacity_unit)}/h
-                                </small>
-                              </td>
-                              <td>
-                                {m.image_mode === "day"
-                                  ? "Tag"
-                                  : m.image_mode === "night_ir"
-                                    ? "Nacht / IR"
-                                    : "Unbekannt"}
-                              </td>
-                              <td>
-                                {m.analysis_method === "local_rf_v1"
-                                  ? "Lokales Modell"
-                                  : m.analysis_method === "manual_review_v1"
-                                    ? "Manuell geprüft"
-                                    : "Manuell"}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </section>
-                )}
-              </>
+              </div>
             ))}
           {page === "containers" && (
             <div className="container-grid">
@@ -2041,8 +1901,7 @@ export default function Portal({
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          setSelected(c.id);
-                          setPage("dashboard");
+                          openContainer(c.id);
                         }}
                       >
                         Übersicht
@@ -2162,7 +2021,9 @@ export default function Portal({
                   </select>
                 </label>
               </div>
-              <ContainerRules container={current} onChanged={refresh} />
+              <div id="container-rules" tabIndex={-1}>
+                <ContainerRules key={current.id} container={current} onChanged={refresh} />
+              </div>
             </>
           )}
           {page === "training" && canTrain && (

@@ -1,5 +1,37 @@
 # Änderungsprotokoll
 
+## 0.6.0 · 09.11.2026
+
+Update bestehender Installationen: [Anleitung mit Sicherung und Wiederherstellung](UPDATE.md). Migrationen 0009–0011 laufen beim Backend-Start; vorhandene Konten, FTP-Zuordnungen, Bewertungen und Modelle bleiben erhalten. Vorher Datenbank, Konfiguration und beide Bildbestände sichern. Standardaufbewahrung automatisch gesammelter, unbewerteter Bilder: sieben Tage.
+
+### Behälterreiter im Training
+
+- Training verwendet oberhalb von 700 px je Behälter einen Reiter; bis einschließlich 700 px bleibt die Dropdown-Auswahl. Vorhandene Reiterkomponente wiederverwendet, ohne „Alle“-Reiter im Training.
+- Reiter horizontal scrollbar und per Pfeiltasten/Pos1/Ende bedienbar; Auswahl und bestehende Rollenfilter unverändert.
+
+### Laufende Lernsammlung
+
+- Aktuelle Kamerabilder unabhängig von Modellerkennung sammeln und vorhandene Bilder nachholen; FTP-Nachsammlung auch ohne Datumsstruktur.
+- Drei-/50-Bilder-Grenzen entfernt; Aufbewahrung je Kamera 1–365 Tage, Standard sieben, mit Vorschau betroffener unbewerteter Bilder. Bestätigte Lernbilder, Uploads und aktuelle Kameravorschau geschützt.
+- Automatischer oder manueller Trainingsstart; wartende automatische Jobs beim Moduswechsel abbrechen, laufende Jobs sichtbar beenden. Bestehende Qualitätsprüfung bleibt erhalten.
+- Laufende Eingaben bei neuen Bildern erhalten; aktuelle Vorschau, Bewertungsstatus, lokale Aufnahmezeit und getrennte Sammlungs-/Trainingsinformationen.
+- Migration 0011 und aktualisierte Regressionstests für den größeren Bildbestand; keine neue Abhängigkeit.
+
+### Ungeeignete Bilder lernen
+
+- Bildprüfung: „Als ungeeignet lernen“ mit Gründen Deckel zu, Sicht verdeckt und Nicht messbar. Bestätigte Gegenbeispiele bleiben mit Bild und ohne Soll-Füllstand erhalten; „Nur verwerfen“ bleibt die dauerhafte Entfernung ohne Training. Bereits gelöschte Dateien werden nicht rekonstruiert.
+- Kameraspezifische Prüfung der Bildverwendbarkeit vor der Füllstandsschätzung, getrennt nach Tag/Nacht. Freigabe erst nach unabhängiger Serienvalidierung; ungeeignete oder zweifelhafte Bilder erzeugen keinen Messwert. Automatische Entscheidungen bleiben ohne automatische Lernfreigabe manuell prüfbar.
+- Bestätigte Gegenbeispiele korrigieren, sichern, zurücksetzen und wiederherstellen. Bestehende Messwerte bleiben bei nachträglicher Bewertung erhalten. Bestehende Rollen- und CSRF-Regeln gelten auch für die neue Aktion.
+- Migration 0010 ergänzt Ablehnungsgrund an Lernbildern und Wiederherstellungssnapshots sowie nullable Soll-Füllstand im Snapshot. Rückbau mit Gegenbeispielen oder daraus trainierten Modellständen gesperrt, damit alte Software diese nicht als Füllstände verwendet. Keine neue Bibliothek.
+
+### Dashboard, FTP-Test und Passwortwiederherstellung
+
+- Dashboard startet mit „Alle“ und behälterbezogenen Reitern. Große Kamerabilder, vorhandene Kennzahlen, Messzeitpunkte und getrennte Kurzverläufe; gemeinsamer Zeitraumfilter.
+- Einzelübersicht und Messwertverlauf zusammengeführt. Der eigene Menüpunkt „Verlauf“ entfällt; Messwerttabelle, Raten, Ereignisse und Prüfaktionen bleiben erhalten. Admins erreichen Behälter-, Kamera- und Warnregel-Einstellungen direkt im Behälterkontext.
+- FTP-/FTPS-Test in Verbindungs- und Kameradialogen: aktuelle Eingaben prüfen, direkte Ordner und JPG/JPEG/PNG/WEBP-Dateien zählen, ohne Speicherung, Rekursion oder Downloads. Harte 20-Sekunden-Frist und bestehende Eintragsgrenze; sichere Fehler statt falscher Nullzählungen.
+- „Passwort vergessen“ mit bestehendem SMTP: kryptografischer Einmalcode per E-Mail, 30 Minuten gültig, Anfragebegrenzung, keine Kontoauskunft und Widerruf aller Sitzungen nach Änderung. Ohne eingerichtetes SMTP klarer Hinweis; CLI-Rücksetzung bleibt verfügbar.
+- Migration 0009 ergänzt ausschließlich `password_resets`. Keine neuen Laufzeitabhängigkeiten. Frontend-Tests für begrenzte Parallelität und verworfene Antworten in CI ergänzt.
+
 ## 0.5.2 · 01.11.2026
 
 - Füllstandskachel zeigt die Herkunft: „Aktuell“ (automatisch übernommen) oder „Nutzereingabe“ (manuell/Training bestätigt).

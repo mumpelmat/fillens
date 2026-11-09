@@ -90,9 +90,6 @@ def cycle(first_seen: dict[tuple[str, str], datetime]) -> None:
             )
         )
         db.commit()
-        queue_learning_jobs()
-        run_training_job(ProgressReporter)
-        adopt_ready_models()
         db.execute(
             update(WorkerStatus)
             .where(WorkerStatus.id == "importer")
@@ -126,6 +123,9 @@ def cycle(first_seen: dict[tuple[str, str], datetime]) -> None:
             reporter = ProgressReporter(camera.id)
             try:
                 preserve_review_references(db, camera)
+                if not camera.ftp_connection_id:
+                    from .importer import reconcile
+                    reconcile(db, camera)
                 imported = (
                     import_camera(db, camera, first_seen, reporter)
                     if camera.ftp_connection_id
@@ -171,16 +171,6 @@ def cycle(first_seen: dict[tuple[str, str], datetime]) -> None:
                         type(exc).__name__,
                     )
                 db.commit()
-                from .training_collection import run_collection
-
-                try:
-                    run_collection(camera.id)
-                except Exception as exc:
-                    logger.error(
-                        "event=training_collection_failed camera=%s type=%s",
-                        camera.id,
-                        type(exc).__name__,
-                    )
                 db.execute(
                     update(WorkerStatus)
                     .where(WorkerStatus.id == "importer")
@@ -193,6 +183,15 @@ def cycle(first_seen: dict[tuple[str, str], datetime]) -> None:
                 )
                 db.commit()
 
+        from .training_collection import run_collection
+        for camera in cameras:
+            try:
+                run_collection(camera.id)
+            except Exception as exc:
+                logger.error("event=training_collection_failed camera=%s type=%s", camera.id, type(exc).__name__)
+        queue_learning_jobs()
+        run_training_job(ProgressReporter)
+        adopt_ready_models()
     with SessionLocal() as status_db:
         status_db.execute(
             update(WorkerStatus)

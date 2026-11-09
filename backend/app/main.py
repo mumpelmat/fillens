@@ -45,10 +45,11 @@ from .operations_api import router as operations_router
 from .rates import request_rebuild
 from .alerts import evaluate
 from .worker_control import request_run, worker_fresh
+from .password_reset import router as password_reset_router
 
 app = FastAPI(
     title="Fillens API",
-    version="0.5.2",
+    version="0.6.0",
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
@@ -56,6 +57,7 @@ app = FastAPI(
 logger = logging.getLogger("fillens.api")
 app.include_router(training_router)
 app.include_router(operations_router)
+app.include_router(password_reset_router)
 
 
 @app.middleware("http")
@@ -377,6 +379,23 @@ def ftp_connections(db: DB, _admin: Admin):
         ftp_data(c)
         for c in db.scalars(select(FTPConnection).order_by(FTPConnection.name))
     ]
+
+
+@app.post("/api/ftp-connections/test")
+def test_ftp_connection(data: schemas.FTPTestInput, db: DB, _admin: Admin):
+    from .config import settings
+    from .ftp_probe import probe_connection, test_path
+
+    stored = require(db, FTPConnection, data.connection_id) if data.connection_id else None
+    if data.password is None and stored is None:
+        raise HTTPException(422, "FTP-Passwort erforderlich.")
+    config = data.model_dump(include={"host", "port", "username", "protocol"})
+    config["encrypted_password"] = (
+        encrypt(data.password) if data.password is not None else stored.encrypted_password
+    )
+    return probe_connection(
+        config, test_path(data.root_path, data.ftp_root), settings().max_scan_files
+    )
 
 
 @app.post("/api/ftp-connections", status_code=201)

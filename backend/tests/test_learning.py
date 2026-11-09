@@ -83,6 +83,15 @@ def test_review_reference_survives_buffer_and_becomes_training_sample(admin, con
         assert sample and not sample.approved and sample.target_fill_level is None
     for i in range(4):
         product_image(container, 40 + i, 600 + i, i + 1)
+    # Zeitliche Bereinigung des Kameraoriginals lässt die jüngere Lernkopie intakt.
+    from datetime import timedelta
+    from app.models import ImageBuffer
+    from app.importer import reconcile
+    from app.db import utcnow
+    with SessionLocal() as db:
+        db.get(ImageBuffer, first).imported_at = utcnow() - timedelta(days=8)
+        db.commit()
+        reconcile(db, db.get(Camera, container["camera"]["id"]))
     assert admin.get(f"/api/images/{first}/content").status_code == 404
     response = admin.get(f"/api/training/analyses/{result_id}/content")
     assert (
@@ -151,7 +160,7 @@ def test_learning_off_keeps_inference_but_no_review_images_or_rows(
         ).status_code
         == 200
     )
-    # Neue Bilder sammeln wieder; frühere pausierte werden nicht rückwirkend archiviert.
+    # Lokale pausierte Bilder wurden nachgeholt; neue Bilder sammeln ebenfalls weiter.
     product_image(container, 45, 780, 1)
     with SessionLocal() as db:
         assert analyze_buffer(db, db.get(Camera, camera_id)) == 1
@@ -219,5 +228,5 @@ def test_legacy_reference_preserved_and_explicit_deletion_not_undone(admin, cont
     assert admin.delete(f"/api/training/samples/{sample_id}").status_code == 200
     with SessionLocal() as db:
         preserve_review_references(db, db.get(Camera, container["camera"]["id"]))
-        assert db.get(TrainingSample, sample_id) is None
+        assert db.get(TrainingSample, sample_id).discarded_at is not None
         assert not db.get(AnalysisResult, result.id).review_visible

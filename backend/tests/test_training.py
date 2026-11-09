@@ -115,10 +115,10 @@ def test_more_than_three_training_images_and_separate_product_buffer(admin, cont
     for i in range(4):
         product_image(container, level=20 + i * 10, seed=200 + i, offset=i)
     overview = admin.get(f"/api/training/cameras/{container['camera']['id']}").json()
-    assert overview["sample_count"] == 6 and overview["image_count_limit"] is None
+    assert overview["sample_count"] == 10 and overview["image_count_limit"] is None
     with SessionLocal() as db:
-        assert len(list(db.scalars(select(ImageBuffer)))) == 3
-        assert len(list(db.scalars(select(TrainingSample)))) == 6
+        assert len(list(db.scalars(select(ImageBuffer)))) == 4
+        assert len(list(db.scalars(select(TrainingSample)))) == 10
         assert all(
             sample_path(sample).is_file()
             for sample in db.scalars(select(TrainingSample))
@@ -129,7 +129,7 @@ def test_more_than_three_training_images_and_separate_product_buffer(admin, cont
     )
 
 
-def test_new_ftp_batch_is_analyzed_before_three_image_eviction(
+def test_new_ftp_batch_is_analyzed_and_retained(
     admin, container, ftp_tree
 ):
     root, port, _ = ftp_tree
@@ -144,7 +144,7 @@ def test_new_ftp_batch_is_analyzed_before_three_image_eviction(
     with SessionLocal() as db:
         camera = camera_connection(db, container, port, scan_mode="recursive")
         assert import_camera(db, camera, {}) == 6
-        assert len(list(db.scalars(select(ImageBuffer)))) == 3
+        assert len(list(db.scalars(select(ImageBuffer)))) == 7
         assert len(list(db.scalars(select(AnalysisResult)))) == 7
 
 
@@ -283,6 +283,15 @@ def test_unvalidated_prototype_is_pending_and_review_survives_image_deletion(
         assert db.scalar(select(Measurement)) is None
     for i in range(4):
         product_image(container, 40 + i, 400 + i, i + 1)
+    # Zeitliche Bereinigung des Kameraoriginals lässt die jüngere Lernkopie intakt.
+    from datetime import timedelta
+    from app.models import ImageBuffer
+    from app.importer import reconcile
+    from app.db import utcnow
+    with SessionLocal() as db:
+        db.get(ImageBuffer, first).imported_at = utcnow() - timedelta(days=8)
+        db.commit()
+        reconcile(db, db.get(Camera, container["camera"]["id"]))
     assert admin.get(f"/api/images/{first}/content").status_code == 404
     response = admin.post(
         f"/api/training/analyses/{result_id}/review", json={"fill_level": 55}

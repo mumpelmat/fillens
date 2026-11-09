@@ -313,12 +313,13 @@ def polygon_features(rgb, roi):
 
 @dataclass
 class Analysis:
-    fill_level_percent: float
+    fill_level_percent: float | None
     confidence: float
     image_mode: str
     reason: str | None
     analysis_method: str = "local_rf_v1"
     estimated_error: float | None = None
+    unusable: bool = False
 
 
 class FillLevelAnalyzer(Protocol):
@@ -401,6 +402,23 @@ class LocalForestAnalyzer:
         features, mode, quality = image_features(
             path, a["config"]["roi"], GEOMETRY_FEATURE_VERSION
         )
+        rejection = a.get("unusable_heads", {}).get(mode)
+        if rejection and rejection.get("ready"):
+            from .unusable_learning import FULL_FRAME
+
+            full, _, _ = image_features(path, FULL_FRAME, GEOMETRY_FEATURE_VERSION)
+            score = float(np.mean(self._predict_trees(full, rejection["trees"])))
+            distance = float(np.min(np.sqrt(np.mean(
+                ((np.asarray(rejection["anchors"]) - full) /
+                 np.maximum(np.asarray(rejection["scale"]), 0.03)) ** 2, axis=1))))
+            if score >= 0.5:
+                rejected = score >= rejection["threshold"] and distance <= 2
+                return Analysis(
+                    None, 0, mode,
+                    "Als ungeeignet erkannt (z. B. Deckel zu oder Sicht verdeckt). Kein Messwert übernommen."
+                    if rejected else "Bild möglicherweise ungeeignet. Bitte manuell prüfen; kein Messwert übernommen.",
+                    "local_geometry_v2", None, rejected,
+                )
         head = a.get("heads", {}).get(mode) or a.get("fallback")
         if not head:
             return Analysis(

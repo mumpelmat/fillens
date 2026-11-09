@@ -92,7 +92,7 @@ def test_login_throttle_and_no_secret_echo(client):
     assert secret not in response.text
 
 
-def test_rolling_buffer_preserves_measurement_and_deduplicates(admin, container):
+def test_retained_images_preserve_measurement_and_deduplicate(admin, container):
     first = add_image(container)
     result = admin.post(
         f"/api/containers/{container['id']}/measurements",
@@ -119,7 +119,7 @@ def test_rolling_buffer_preserves_measurement_and_deduplicates(admin, container)
                     )
                 )
             )
-            assert len(rows) <= 3
+            assert len(rows) == index + 1
             from app.config import settings
 
             assert (
@@ -130,9 +130,9 @@ def test_rolling_buffer_preserves_measurement_and_deduplicates(admin, container)
                         ).glob("*.jpg")
                     )
                 )
-                <= 3
+                == index + 1
             )
-    assert admin.get(f"/api/images/{first}/content").status_code == 404
+    assert admin.get(f"/api/images/{first}/content").status_code == 200
     history = admin.get(
         f"/api/containers/{container['id']}/measurements?period=all"
     ).json()
@@ -151,7 +151,11 @@ def test_rolling_buffer_preserves_measurement_and_deduplicates(admin, container)
         assert len(list(db.scalars(select(ImportRecord)))) == 6
 
 
-def test_rates_and_capacity_snapshot(admin, container):
+def test_rates_and_capacity_snapshot(admin, container, monkeypatch):
+    # Ein Sekundenwechsel zwischen zwei HTTP-Aufrufen darf den Sollabstand nicht ändern.
+    import sys
+    fixed_time = utcnow()
+    monkeypatch.setattr(sys.modules[__name__], "utcnow", lambda: fixed_time)
     for i, level in [(0, 40), (1, 50)]:
         image_id = add_image(container, i)
         assert (
