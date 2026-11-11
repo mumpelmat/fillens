@@ -46,10 +46,12 @@ from .rates import request_rebuild
 from .alerts import evaluate
 from .worker_control import request_run, worker_fresh
 from .password_reset import router as password_reset_router
+from .level_correction import correct_level, create_manual_measurement
+from .user_admin import delete_user, set_password, set_role
 
 app = FastAPI(
     title="Fillens API",
-    version="0.6.0",
+    version="0.7.0",
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
@@ -239,6 +241,31 @@ def activate_user(user_id: str, active: bool, db: DB, admin: Admin):
         db.execute(delete(AuthSession).where(AuthSession.user_id == user.id))
     db.commit()
     return user_data(user)
+
+
+@app.put("/api/users/{user_id}/password")
+def user_password(
+    user_id: str, data: schemas.PasswordSet, request: Request, db: DB, _admin: Admin
+):
+    user = require(db, User, user_id)
+    set_password(db, user, data.password, request.cookies.get(session_cookie(), ""))
+    db.commit()
+    return user_data(user)
+
+
+@app.put("/api/users/{user_id}/role")
+def user_role(user_id: str, data: schemas.RoleSet, db: DB, admin: Admin):
+    user = require(db, User, user_id)
+    set_role(db, user, data.role, admin)
+    db.commit()
+    return user_data(user)
+
+
+@app.delete("/api/users/{user_id}", status_code=204)
+def remove_user(user_id: str, db: DB, admin: Admin):
+    user = require(db, User, user_id)
+    delete_user(db, user, admin)
+    db.commit()
 
 
 @app.get("/api/sites")
@@ -457,25 +484,10 @@ def manual_measurement(
         select(Measurement.id).where(Measurement.source_import_id == image.import_id)
     ):
         raise HTTPException(409, "Für dieses Bild ist bereits ein Messwert vorhanden.")
-    measurement = Measurement(
-        container_id=container.id,
-        camera_id=camera.id,
-        source_import_id=image.import_id,
-        measured_at=image.captured_at,
-        raw_fill_level=None,
-        corrected_fill_level=data.fill_level,
-        effective_fill_level=data.fill_level,
-        absolute_level=container.capacity * data.fill_level / 100,
-        capacity_snapshot=container.capacity,
-        capacity_unit=container.capacity_unit,
-        image_mode=data.image_mode,
-        timestamp_source=image.timestamp_source,
-        created_by=admin.id,
-    )
     image.image_mode = data.image_mode
-    db.add(measurement)
-    db.flush()
-    update_rates(db, measurement)
+    measurement = create_manual_measurement(
+        db, container, camera, image, data.fill_level, data.image_mode, admin.id
+    )
     db.execute(
         update(AnalysisResult)
         .where(
@@ -486,6 +498,18 @@ def manual_measurement(
     )
     db.commit()
     return measurement_data(measurement)
+
+
+@app.post("/api/containers/{container_id}/level-correction")
+def level_correction(
+    container_id: str, data: schemas.LevelCorrection, db: DB, user: CurrentUser
+):
+    result = correct_level(db, container_id, data.image_id, data.fill_level, user)
+    db.commit()
+    return {
+        "measurement": measurement_data(result["measurement"]),
+        "learned": result["learned"],
+    }
 
 
 @app.get("/api/containers/{container_id}/measurements")

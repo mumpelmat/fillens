@@ -28,7 +28,8 @@ Kameras legen Bilder per FTP ab. Fillens importiert sie, erfasst Füllstände ma
 - **Füllen- oder Verbrauchsmodus** mit geglätteten Raten, Ereignissen (Leerung, Nachfüllung) und Verlaufsdiagrammen
 - **Lokales Lernen:** Bildbereich als Vieleck markieren, Bilder bestätigen, getrennte Lernstände für Tag und Nacht; neue Lernstände werden erst nach bestandener Prüfung verwendet. Trainingsbilder haben **kein Drei-Bilder-Limit**.
 - **Warnungen** mit Schwellen und Hysterese im Portal und per SMTP
-- **Rollen** Administrator/Benutzer, Argon2-Passwörter, CSRF-Schutz, verschlüsselte FTP-/SMTP-Zugangsdaten
+- **Füllstand korrigieren** direkt unter dem Kamerabild im Dashboard; die Korrektur wird Messwert und Lernbeispiel zugleich
+- **Rollen** Administrator/Benutzer mit Kontoverwaltung (Rolle ändern, Passwort setzen, löschen), Argon2-Passwörter, CSRF-Schutz, verschlüsselte FTP-/SMTP-Zugangsdaten
 
 <table>
   <tr>
@@ -41,7 +42,7 @@ Kameras legen Bilder per FTP ab. Fillens importiert sie, erfasst Füllstände ma
   </tr>
 </table>
 
-Version **0.6.0**, Stand **09.11.2026**. Änderungen im [Änderungsprotokoll](docs/CHANGELOG.md).
+Version **0.7.0**, Stand **11.11.2026**. Änderungen im [Änderungsprotokoll](docs/CHANGELOG.md).
 
 ## Schnellstart mit Docker
 
@@ -67,9 +68,9 @@ Für den Dauerbetrieb auf einer Synology (DSM 7.2+, Container Manager) gibt es f
 2. Unter **System → FTP-Verbindung** Server, Port, Zugang und Root eintragen. FTP und explizites FTPS werden unterstützt.
 3. Unter **Anlagen → Kamera** die Verbindung zuweisen. Ein optionales Kamera-Unterverzeichnis ist relativ zum FTP-Root. Die Kamera-Zeitzone bestimmt die Interpretation von EXIF-Zeitstempeln.
 4. Der Worker durchsucht das Verzeichnis einschließlich beliebiger Unterverzeichnisse. Nach dem nächsten Scan erscheint das aktuelle Bild.
-5. Unter **Übersicht → Messwert eintragen** den tatsächlichen Füllstand von 0 bis 100 % erfassen. Das Bild wird im Dialog fest zugeordnet; ist es inzwischen gelöscht, lehnt die API die Eingabe ab.
+5. Im **Dashboard** unter dem Kamerabild **Füllstand korrigieren** wählen und den tatsächlichen Füllstand von 0 bis 100 % eintragen. Der Wert gilt für das neueste Bild; ist inzwischen ein neueres Bild eingetroffen, bittet das Portal um Aktualisierung.
 6. Drei KPI-Karten zeigen Prozentfüllstand, Inhalt/Gesamtkapazität sowie absolute und prozentuale Betriebsrate gemeinsam. Unter **Anlagen → Bearbeiten** den Modus **Füllen** oder **Verbrauch**, die Zeitbasis und das Glättungsfenster wählen. Nach der Worker-Berechnung stehen Füllstands- und Ratendiagramm unter **Verlauf** bereit.
-7. Unter **Benutzer** weitere Konten mit Leserechten oder Administratorrechten anlegen. Benutzer sehen Übersicht, Anlagen, Verlauf und aktuelles Bild; sie können nichts konfigurieren oder erfassen, jedoch eigene Benachrichtigungen als gelesen markieren.
+7. Unter **Benutzer** weitere Konten mit Leserechten oder Administratorrechten anlegen. Dort lassen sich auch Rollen ändern, neue Passwörter setzen und Konten löschen. Benutzer sehen Übersicht, Anlagen, Verlauf und aktuelles Bild; sie können nichts konfigurieren, jedoch eigene Benachrichtigungen als gelesen markieren und bei Behältern mit eingeschaltetem Lernen den Füllstand korrigieren.
 
 Pro importiertem Produktivbild ist ein effektiver Messwert möglich. Unsichere Modellergebnisse werden zunächst getrennt zur Prüfung gespeichert. Eine manuelle Freigabe erhält den Modell-Rohwert. Änderungen bereits übernommener Messungen mit vollständigem Korrekturprotokoll gehören zum späteren Milestone 6. Aktuelle Werte und Bilder werden alle 30 Sekunden neu geladen.
 
@@ -213,6 +214,8 @@ Rohe Serverantworten werden weder angezeigt noch protokolliert. Ein manueller Ne
 
 **Alle** zeigt die Behälter gemeinsam mit großen Kamerabildern und getrennten Kurzverläufen. Die Zeitraumwahl gilt für alle Diagramme. Ein Behälter-Reiter oder **Messungen ansehen** öffnet Bild, Kennzahlen, Verlauf, Messwerttabelle und Ereignisse in einer gemeinsamen Ansicht. Administratoren erreichen über **Einstellungen** direkt die bestehenden Behälter-, Kamera- und Warnregel-Einstellungen.
 
+Unter jedem aktuellen Kamerabild steht der erkannte oder geschätzte Füllstand mit **Füllstand korrigieren**. Die Eingabe wird zum Messwert des neuesten Bildes – auch wenn das Modell bereits einen Wert übernommen hat – und zugleich als bestätigtes Lernbild gespeichert. Raten werden neu berechnet. Es ist die einzige Bewertungsaktion im Dashboard; die Lernliste wird weiterhin unter **Training** bearbeitet. Admins dürfen immer korrigieren, Benutzer nur bei Behältern mit eingeschaltetem Lernen.
+
 ## Betrieb, Migrationen und Fehlerdiagnose
 
 ```bash
@@ -225,7 +228,7 @@ docker compose exec backend python -m app.cli reset-password --email admin@firma
 
 Auf der Anmeldung führt **Passwort vergessen?** bei eingerichtetem SMTP zu einer E-Mail mit einem Einmalcode. Der Code gilt 30 Minuten und wird unter **Ich habe bereits einen Code** zusammen mit dem neuen Passwort eingegeben. Auch rein lokale Installationen benötigen dafür keine öffentliche URL. Ohne SMTP bleibt der oben gezeigte CLI-Befehl nutzbar. Nach einem Versandfehler oder Serverneustart gegebenenfalls erneut anfordern; keine automatische Wiederholung von Rücksetzmails.
 
-Ein Passwortreset widerruft alle Sitzungen dieses Benutzers. Kontodeaktivierung beendet ebenfalls alle Sitzungen. Das eigene Administratorkonto kann im Portal nicht deaktiviert werden. Anmeldung ist nach fünf Versuchen je Konto in 15 Minuten gesperrt; es gibt keine offene Registrierung.
+Ein Passwortreset widerruft alle Sitzungen dieses Benutzers. Kontodeaktivierung beendet ebenfalls alle Sitzungen. Setzt ein Admin unter **Benutzer** ein neues Passwort, werden offene Rücksetzcodes und alle Sitzungen dieses Kontos beendet. Rollenwechsel gelten sofort ohne Neuanmeldung. Gelöschte Konten verlieren nur den Personenbezug; Messwerte, Lernbilder und Modelle bleiben erhalten. Das eigene Administratorkonto kann im Portal weder deaktiviert, herabgestuft noch gelöscht werden. Anmeldung ist nach fünf Versuchen je Konto in 15 Minuten gesperrt; es gibt keine offene Registrierung.
 
 System zeigt Arbeitsphase und Worker-Lebenszeichen, letzte Scans/Importe, Suchstrategie, Fehlercodes und Puffergröße. Ein aktuelles Lebenszeichen bestätigt den Worker, keine frischen Kamerabilder: Technische Frische-/Kamerawarnungen bleiben ein weiterer Schritt; Füllstandsbenachrichtigungen sind umgesetzt. In den FTP-Einstellungen prüft **Verbindung testen** die aktuellen Zugangsdaten und den Root. Im Kameradialog prüft **FTP-Ordner testen** zusätzlich das Kamera-Unterverzeichnis. Beide Tests zeigen Ordner und Bilddateien ausschließlich auf erster Ebene, ohne etwas zu speichern oder Bilder herunterzuladen. Grenzen und Fehler werden ausdrücklich gemeldet. Der reguläre Import prüft die zugewiesenen Verbindungen weiterhin im Worker. Fehlertexte sind bewusst ohne Zugangsdaten; Logs enthalten Ereignistyp, Kamera-ID, sicheren Fehlercode und Fehlerklasse.
 
@@ -233,7 +236,7 @@ Ein einzelner Worker ist vorgesehen. Ein zweiter wird abgewiesen. Ein Scan erfol
 
 ## Backup und Update
 
-Für bestehende Installationen gilt die [Update-Anleitung für Version 0.6.0](docs/UPDATE.md), mit getrennten Schritten für fertige Images und lokale Quellcode-Builds.
+Für bestehende Installationen gilt die [Update-Anleitung für Version 0.7.0](docs/UPDATE.md), mit getrennten Schritten für fertige Images und lokale Quellcode-Builds.
 
 **Datenbank, `.env` mit Fernet-Schlüssel, Compose-Konfiguration und beide Bildbestände (`image_data` und `ml_data` beziehungsweise `ml/`) zusammen sichern.** Backend und Worker müssen während der Sicherung gestoppt sein, damit Datenbank und Dateien zusammenpassen. Ohne Fernet-Schlüssel sind gespeicherte FTP-/SMTP-Zugangsdaten nicht mehr lesbar.
 

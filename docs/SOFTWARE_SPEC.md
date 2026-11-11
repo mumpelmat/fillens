@@ -1,4 +1,25 @@
-# Softwarespezifikation · Fillens 0.5.1
+# Softwarespezifikation · Fillens 0.7.0
+
+## Version 0.7.0 · 11.11.2026: Kontoverwaltung und Füllstandskorrektur
+
+**Kontoverwaltung:** Neben Anlegen und (De-)Aktivieren können Admins Rollen ändern, Passwörter setzen und Konten löschen.
+
+| Endpunkt | Rolle | Verhalten |
+|---|---|---|
+| `PUT /api/users/{id}/role` | Admin, CSRF | Body `{role: admin \| user}`. 409 für die eigene Rolle und beim Herabstufen des letzten aktiven Admins. Rollen werden je Anfrage aus der Datenbank gelesen; die Änderung gilt sofort für bestehende Sitzungen. |
+| `PUT /api/users/{id}/password` | Admin, CSRF | Body `{password}` 12–256 Zeichen. Argon2-Hash, offene `password_resets` des Kontos gelöscht, alle Sitzungen des Kontos widerrufen außer der aufrufenden Sitzung. |
+| `DELETE /api/users/{id}` | Admin, CSRF | 204. 409 für eigenes Konto und letzten aktiven Admin. Sitzungen, Gelesen-Status und Rücksetzcodes werden gelöscht. Nullable `created_by`-Bezüge (Messwerte, Lernbilder, Ereignisse, Snapshots) werden `NULL`; Pflichtbezüge (`model_versions.created_by`, `learning_restore_points.created_by`) gehen auf den löschenden Admin über. Fachdaten bleiben erhalten. Umsetzung über alle Fremdschlüssel auf `users.id` (`backend/app/user_admin.py`). |
+
+**Füllstandskorrektur:** Einzige Bewertungsaktion im Dashboard, direkt unter dem aktuellen Kamerabild in Übersichtskarte und Detailansicht. Sichtbar für Admins und bei eingeschaltetem „Weiter lernen“ auch für normale Benutzer (serverseitig über `training_camera`). Die Trainingsseite bleibt die Stelle für die Bearbeitung der Lernliste; „Jetzt bewerten“, „Unter Training prüfen“ und „Messwert eintragen“ im Dashboard entfallen, Messwertdetails bleiben als Anzeige.
+
+`POST /api/containers/{id}/level-correction` mit `{image_id, fill_level 0–100}` (`backend/app/level_correction.py`):
+
+1. Nur das neueste Bild des Behälters ist korrigierbar, sonst 409 („Neues Kamerabild verfügbar“).
+2. Lernlabel: vorhandene Lernreferenz des Bildes oder ausdrücklich neu gesicherte Kopie; Bestätigung über denselben Helfer wie das Training (`apply_confirmation`). Verworfene/abgelaufene Bilder oder abweichende Kameradrehung werden nicht gelernt (`learned=false`).
+3. Messwert: vorhandener Messwert des Bildes wird korrigiert (`corrected_fill_level`, `effective_fill_level`, `absolute_level` über Kapazitätssnapshot, Verfahren `manual_review_v1` sofern nicht manuell) und Raten werden neu berechnet. Ohne Messwert entsteht er aus der offenen Auswertung bzw. als manueller Messwert. Zugehörige Auswertungen erhalten Status `reviewed`.
+4. Antwort `{measurement, learned}`.
+
+Abweichung zu früherem Verhalten: Bisher änderte eine nachträgliche Bewertung keine übernommenen Messwerte. Diese Regel gilt weiterhin für Training und `review_analysis`; die Dashboard-Korrektur des neuesten Bildes ändert den Messwert bewusst. Der bisherige Admin-Endpunkt `POST /api/containers/{id}/measurements` bleibt für API-Kompatibilität bestehen.
 
 ## Aktueller Stand 08.11.2026: Laufende Sammlung und Lernsteuerung
 
@@ -34,7 +55,7 @@ Stand 01.11.2026.
 
 Selbst betriebenes Füllstandsportal mit Standorten, Behältern (Liter/m³), einer Kamera je Behälter, FTP/FTPS-Import, zeitlich aufbewahrten Kamerabildern ohne Anzahlgrenze, manuellen und automatischen Messwerten sowie dauerhaftem Zahlenverlauf. Strukturgeleitete Datumsordnersuche, differenzierte FTP-Fehler und Worker-Aktivitätsanzeige bleiben erhalten.
 
-Admins verwalten Benutzer, Behälter, Betriebsmodus, Ratenfenster, Ereignisse, Warnregeln, SMTP, Kamera-/FTP-Konfiguration und sämtliche Trainingsfunktionen. Benutzer besitzen installationsweite Leserechte für Dashboard, Anlagen, Verlauf und Benachrichtigungen; ihren eigenen Gelesen-Status dürfen sie ändern. Bei eingeschaltetem Lernen dürfen normale Nutzer vorhandene Trainings-/Referenzbilder ansehen, Füllstände bestätigen oder korrigieren und offene Bilder verwerfen. Die Freigabe gilt je Behälter und wird auch serverseitig für Bildabrufe geprüft; ohne Freigabe verschwindet der Trainingsreiter. Upload, ROI-/Modus-/Serienänderungen, Lernschalter, allgemeine Löschung und technische Modellverwaltung bleiben administrativ. Empfängerlisten, Versanddetails und Zugangskonfiguration bleiben Admins vorbehalten. Keine Mandanten-/Standortfreigaben.
+Admins verwalten Benutzer (anlegen, (de)aktivieren, Rolle ändern, Passwort setzen, löschen), Behälter, Betriebsmodus, Ratenfenster, Ereignisse, Warnregeln, SMTP, Kamera-/FTP-Konfiguration und sämtliche Trainingsfunktionen. Benutzer besitzen installationsweite Leserechte für Dashboard, Anlagen, Verlauf und Benachrichtigungen; ihren eigenen Gelesen-Status dürfen sie ändern. Bei eingeschaltetem Lernen dürfen normale Nutzer vorhandene Trainings-/Referenzbilder ansehen, Füllstände bestätigen oder korrigieren und offene Bilder verwerfen. Die Freigabe gilt je Behälter und wird auch serverseitig für Bildabrufe geprüft; ohne Freigabe verschwindet der Trainingsreiter. Upload, ROI-/Modus-/Serienänderungen, Lernschalter, allgemeine Löschung und technische Modellverwaltung bleiben administrativ. Empfängerlisten, Versanddetails und Zugangskonfiguration bleiben Admins vorbehalten. Keine Mandanten-/Standortfreigaben.
 
 ## Betriebsmodi und Raten
 
@@ -48,7 +69,7 @@ Messwert-, Modus-, Fenster-, Grenzwert- und Ereignisänderungen erhöhen eine Be
 
 ## Warnungen und E-Mail
 
-Die kompakte Dashboard-Ansicht priorisiert drei Zahlenkacheln, Kamerabild und Füllstandsverlauf auf der ersten Bildschirmhöhe. Auf breiten Bildschirmen stehen Bild und Verlauf nebeneinander, mobil darunter. Messwertdetails/manuelle Erfassung sind ausklappbar; Ratenverlauf und Ereignisse folgen darunter. Auf niedrigen Mobilbildschirmen entfallen zusätzliche Metadaten/Legenden, die Zahlen und Kurve bleiben sichtbar. Tablet-Navigation wird als Menü eingeblendet. Herkunft des Füllstands unter der Kachel: „Aktuell“ für automatisch übernommene Werte, „Nutzereingabe“ für manuell erfasste oder im Training bestätigte Werte. Hat das neueste Kamerabild keinen Messwert, aber eine unsichere Auswertung (offen oder bei Lernpause übersprungen), zeigen Füllstands- und Inhaltskachel die Schätzung mit gestricheltem Rahmen und „Geschätzt“; die Statuszeile nennt Bildzeit, Modell-Vertrauen und letzte Messung. „Jetzt bewerten“ führt zur Trainingsprüfung (offenes Ergebnis) oder für Admins zur manuellen Erfassung. Schätzungen erzeugen keine Messwerte, Raten oder Warnungen. API: `current_image.analysis` (Rohwert, Vertrauen, Status, Grund der neuesten nicht fehlgeschlagenen Auswertung dieses Bildes).
+Die kompakte Dashboard-Ansicht priorisiert drei Zahlenkacheln, Kamerabild und Füllstandsverlauf auf der ersten Bildschirmhöhe. Auf breiten Bildschirmen stehen Bild und Verlauf nebeneinander, mobil darunter. Messwertdetails sind ausklappbar (nur Anzeige); die Korrektur erfolgt unter dem Kamerabild; Ratenverlauf und Ereignisse folgen darunter. Auf niedrigen Mobilbildschirmen entfallen zusätzliche Metadaten/Legenden, die Zahlen und Kurve bleiben sichtbar. Tablet-Navigation wird als Menü eingeblendet. Herkunft des Füllstands unter der Kachel: „Aktuell“ für automatisch übernommene Werte, „Nutzereingabe“ für manuell erfasste oder im Training bestätigte Werte. Hat das neueste Kamerabild keinen Messwert, aber eine unsichere Auswertung (offen oder bei Lernpause übersprungen), zeigen Füllstands- und Inhaltskachel die Schätzung mit gestricheltem Rahmen und „Geschätzt“; die Statuszeile nennt Bildzeit, Modell-Vertrauen und letzte Messung. Die Schätzung lässt sich direkt unter dem Kamerabild über „Füllstand korrigieren“ übernehmen bzw. korrigieren (siehe Version 0.7.0). Schätzungen erzeugen keine Messwerte, Raten oder Warnungen. API: `current_image.analysis` (Rohwert, Vertrauen, Status, Grund der neuesten nicht fehlgeschlagenen Auswertung dieses Bildes).
 
 Feste visuelle Stufen färben Prozent- und Inhaltskachel: Verbrauch ≤20 % orange und ≤5 % rot, Füllen ≥80 % orange und ≥95 % rot; ohne Messung neutral. Text erklärt die Stufe zusätzlich zur Farbe. Das kompakte Füllstandsdiagramm zeigt keine horizontalen Warnschwellenlinien; Kachelfarben bleiben erhalten. Diese Anzeige ist unabhängig von den administrativ konfigurierbaren Benachrichtigungsregeln; bestehende Regeln werden nicht verändert.
 

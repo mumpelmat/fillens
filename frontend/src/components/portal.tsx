@@ -48,7 +48,7 @@ import { Button } from "@/components/ui/button";
 import Training from "@/components/training";
 import FTPTest from "@/components/ftp-test";
 import PasswordRecovery from "@/components/password-recovery";
-import { ContainerTabs, ContainerSettings, MeasurementKpis, measurementView, useDetailHistory, useOverviewHistories } from "@/components/dashboard";
+import { ContainerTabs, ContainerSettings, LevelCorrection, MeasurementKpis, measurementView, useDetailHistory, useOverviewHistories } from "@/components/dashboard";
 import {
   RateHistory,
   Events,
@@ -84,9 +84,9 @@ type Page =
 type ModalState =
   | { kind: "container"; item?: Container }
   | { kind: "camera"; item: Container }
-  | { kind: "manual"; item: Container }
   | { kind: "ftp"; item?: FTPConnection }
-  | { kind: "user" };
+  | { kind: "user" }
+  | { kind: "password"; item: User };
 const titles: Record<Page, string> = {
   notifications: "Benachrichtigungen",
   dashboard: "Dashboard",
@@ -1020,6 +1020,7 @@ function ContainerOverviewCard({ container, site, admin, data, period, setPeriod
     {container.current_image ? <CameraPreview key={container.current_image.id} image={container.current_image}
       name={container.name} timezone={timezone} onRefresh={onRefresh} />
       : <Empty icon={CameraIcon} title="Noch kein Kamerabild">Für diesen Behälter ist noch kein Bild verfügbar.</Empty>}
+    <LevelCorrection key={container.current_image?.id || "none"} container={container} admin={admin} onSaved={onRefresh} />
     <div className="fleet-metrics"><MeasurementKpis container={container} /></div>
     <div className="fleet-times">
       <span>Bild: {container.current_image ? date(container.current_image.captured_at, timezone) : "Noch keines vorhanden"}</span>
@@ -1253,14 +1254,12 @@ export default function Portal({
           "PUT",
         ),
       );
-    } else if (modal.kind === "manual") {
+    } else if (modal.kind === "password") {
+      if (get("password") !== get("password_repeat"))
+        throw new Error("Die Passwörter stimmen nicht überein.");
       await api(
-        `/containers/${modal.item.id}/measurements`,
-        write({
-          image_id: modal.item.current_image?.id,
-          fill_level: Number(get("fill_level")),
-          image_mode: get("image_mode"),
-        }),
+        `/users/${modal.item.id}/password`,
+        write({ password: get("password") }, "PUT"),
       );
     } else if (modal.kind === "user") {
       await api(
@@ -1321,10 +1320,6 @@ export default function Portal({
   const view = current ? measurementView(current) : null;
   const estimated = view?.estimated || false;
   const levelTone = view?.tone || "unknown";
-  const canReview =
-    imageAnalysis?.status === "pending" &&
-    (admin || !!current?.camera.learning_enabled);
-  const latestMeasured = current?.current_image?.has_measurement;
   return (
     <div
       className={`app-shell ${page === "dashboard" ? "dashboard-shell" : page === "training" ? "learning-shell" : ""}`}
@@ -1588,20 +1583,6 @@ export default function Portal({
                             ? `Messung: ${date(measured.measured_at, timezone)}`
                             : "Wartet auf erste Messung"}
                       </span>
-                      {estimated && (canReview || admin) && (
-                        <Button
-                          className="overview-review"
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            canReview
-                              ? setPage("training")
-                              : setModal({ kind: "manual", item: current })
-                          }
-                        >
-                          Jetzt bewerten
-                        </Button>
-                      )}
                       <Button
                         size="sm"
                         variant="ghost"
@@ -1650,6 +1631,12 @@ export default function Portal({
                                     : "Modus unbekannt"}
                               </span>
                             </div>
+                            <LevelCorrection
+                              key={current.current_image.id}
+                              container={current}
+                              admin={admin}
+                              onSaved={() => void refresh()}
+                            />
                           </>
                         ) : (
                           <Empty title="Noch kein Kamerabild">
@@ -1749,22 +1736,12 @@ export default function Portal({
                 />
                 {page === "dashboard" && (
                   <details className="dashboard-measure-details">
-                    <summary>
-                      {admin
-                        ? "Messwertdetails & manuelle Erfassung"
-                        : "Messwertdetails"}
-                    </summary>
+                    <summary>Messwertdetails</summary>
                     <section className="panel measure-panel">
                       <div className="panel-head">
                         <div>
-                          <h2>
-                            {admin ? "Füllstand erfassen" : "Letzte Messung"}
-                          </h2>
-                          <p>
-                            {admin
-                              ? "Ihre Einschätzung wird zum Messwert."
-                              : "Details zum übernommenen Messwert."}
-                          </p>
+                          <h2>Letzte Messung</h2>
+                          <p>Details zum übernommenen Messwert.</p>
                         </div>
                         <span className="round-icon">
                           <Gauge size={18} />
@@ -1802,46 +1779,6 @@ export default function Portal({
                           </strong>
                         </div>
                       </div>
-                      {current.latest_analysis?.status === "pending" && (
-                        <div className="pending-analysis">
-                          <strong>
-                            Automatisch geschätzt:{" "}
-                            {number(current.latest_analysis.raw_fill_level)} %
-                          </strong>
-                          <p>
-                            {current.latest_analysis.reason ||
-                              "Manuelle Prüfung erforderlich."}
-                          </p>
-                          {(admin || current.camera.learning_enabled) && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setPage("training")}
-                            >
-                              Unter Training prüfen
-                            </Button>
-                          )}
-                        </div>
-                      )}
-                      {admin ? (
-                        <Button
-                          className="w-full"
-                          disabled={!current.current_image || latestMeasured}
-                          onClick={() =>
-                            setModal({ kind: "manual", item: current })
-                          }
-                        >
-                          <Plus size={16} />
-                          {latestMeasured
-                            ? "Aktuelles Bild bereits erfasst"
-                            : "Messwert eintragen"}
-                        </Button>
-                      ) : (
-                        <div className="read-only">
-                          <ShieldCheck size={15} />
-                          Nur Administratoren erfassen Messwerte.
-                        </div>
-                      )}
                       <p className="measurement-help">
                         <CircleHelp size={14} />
                         Der Messwert bleibt dauerhaft erhalten. Das Kamerabild
@@ -1967,7 +1904,39 @@ export default function Portal({
                           )}
                         </td>
                         <td>
-                          {u.role === "admin" ? "Administrator" : "Benutzer"}
+                          <select
+                            className="role-select"
+                            aria-label={`Rolle für ${u.email}`}
+                            value={u.role}
+                            disabled={u.id === user.id}
+                            title={
+                              u.id === user.id
+                                ? "Eigene Rolle kann nicht geändert werden"
+                                : undefined
+                            }
+                            onChange={async (event) => {
+                              const role = event.target.value as User["role"];
+                              if (
+                                !window.confirm(
+                                  `${u.email} zum ${role === "admin" ? "Administrator" : "Benutzer"} machen?`,
+                                )
+                              )
+                                return;
+                              try {
+                                await api(
+                                  `/users/${u.id}/role`,
+                                  write({ role }, "PUT"),
+                                );
+                                setSuccess(`Rolle von ${u.email} geändert.`);
+                                await refresh();
+                              } catch (e) {
+                                setError((e as Error).message);
+                              }
+                            }}
+                          >
+                            <option value="user">Benutzer</option>
+                            <option value="admin">Administrator</option>
+                          </select>
                         </td>
                         <td>
                           <Badge tone={u.active ? "green" : "neutral"}>
@@ -1975,24 +1944,66 @@ export default function Portal({
                           </Badge>
                         </td>
                         <td>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={u.id === user.id}
-                            onClick={async () => {
-                              try {
-                                await api(
-                                  `/users/${u.id}/active?active=${!u.active}`,
-                                  { method: "PUT" },
-                                );
-                                await refresh();
-                              } catch (e) {
-                                setError((e as Error).message);
+                          <div className="user-actions">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={u.id === user.id}
+                              onClick={async () => {
+                                try {
+                                  await api(
+                                    `/users/${u.id}/active?active=${!u.active}`,
+                                    { method: "PUT" },
+                                  );
+                                  await refresh();
+                                } catch (e) {
+                                  setError((e as Error).message);
+                                }
+                              }}
+                            >
+                              {u.active ? "Deaktivieren" : "Aktivieren"}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setModal({ kind: "password", item: u })
                               }
-                            }}
-                          >
-                            {u.active ? "Deaktivieren" : "Aktivieren"}
-                          </Button>
+                            >
+                              Passwort setzen
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="danger-action"
+                              disabled={u.id === user.id}
+                              title={
+                                u.id === user.id
+                                  ? "Eigenes Konto kann nicht gelöscht werden"
+                                  : undefined
+                              }
+                              onClick={async () => {
+                                if (
+                                  !window.confirm(
+                                    `Benutzer ${u.email} dauerhaft löschen? Messwerte und Lernbilder bleiben erhalten.`,
+                                  )
+                                )
+                                  return;
+                                try {
+                                  await api(`/users/${u.id}`, {
+                                    method: "DELETE",
+                                  });
+                                  setSuccess(`Benutzer ${u.email} gelöscht.`);
+                                  await refresh();
+                                } catch (e) {
+                                  setError((e as Error).message);
+                                }
+                              }}
+                            >
+                              <Trash2 size={14} />
+                              Löschen
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -2258,8 +2269,8 @@ export default function Portal({
                 : "Behälter anlegen"
               : modal.kind === "camera"
                 ? "Kamera konfigurieren"
-                : modal.kind === "manual"
-                  ? "Füllstand erfassen"
+                : modal.kind === "password"
+                  ? `Passwort für ${modal.item.email} setzen`
                   : modal.kind === "ftp"
                     ? modal.item
                       ? "FTP-Verbindung bearbeiten"
@@ -2276,43 +2287,29 @@ export default function Portal({
           {modal.kind === "camera" && (
             <CameraForm item={modal.item} connections={connections} />
           )}
-          {modal.kind === "manual" && (
+          {modal.kind === "password" && (
             <>
-              <img
-                className="manual-image"
-                src={`${basePath}/api/images/${modal.item.current_image?.id}/content`}
-                alt="Bild für die manuelle Füllstandserfassung"
-              />
-              <p className="hint">
-                Aufnahme:{" "}
-                {date(
-                  modal.item.current_image?.captured_at,
-                  modal.item.camera.timezone,
-                )}
-              </p>
-              <Field label="Tatsächlicher Füllstand (%)">
+              <Field label="Neues Passwort" hint="Mindestens 12 Zeichen. Bestehende Sitzungen des Kontos werden beendet.">
                 <input
                   autoFocus
-                  name="fill_level"
-                  type="number"
-                  min={0}
-                  max={100}
-                  step="0.1"
+                  name="password"
+                  type="password"
                   required
-                  placeholder="0–100"
+                  minLength={12}
+                  maxLength={256}
+                  autoComplete="new-password"
                 />
               </Field>
-              <Field label="Bildmodus">
-                <select name="image_mode" defaultValue="unknown">
-                  <option value="unknown">Unbekannt</option>
-                  <option value="day">Tag</option>
-                  <option value="night_ir">Nacht / IR</option>
-                </select>
+              <Field label="Passwort wiederholen">
+                <input
+                  name="password_repeat"
+                  type="password"
+                  required
+                  minLength={12}
+                  maxLength={256}
+                  autoComplete="new-password"
+                />
               </Field>
-              <p className="hint">
-                Der Aufnahmezeitpunkt wird als Messzeitpunkt gespeichert. Pro
-                Bild ist eine manuelle Messung möglich.
-              </p>
             </>
           )}
           {modal.kind === "user" && (

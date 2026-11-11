@@ -36,7 +36,7 @@ Weitere Werte:
 
 | Variable | Empfehlung |
 |---|---|
-| `FILLENS_VERSION` | Feste Version wie `0.6.0` statt `latest`, damit Updates bewusst erfolgen |
+| `FILLENS_VERSION` | Feste Version wie `0.7.0` statt `latest`, damit Updates bewusst erfolgen |
 | `COOKIE_SECURE` | `true` bei Zugriff über HTTPS (Reverse Proxy); nur für einen reinen HTTP-Test im LAN `false` |
 | `BIND_ADDRESS` | `127.0.0.1`, wenn der DSM-Reverse-Proxy genutzt wird; `0.0.0.0` für direkten LAN-Zugriff über `http://<NAS-IP>:3000` |
 | `PORT` | Freier Port auf dem NAS, Standard `3000` |
@@ -81,7 +81,7 @@ Das erzeugte Sicherungsverzeichnis verschlüsselt auf ein anderes Laufwerk über
 
 ## 7. Update
 
-Die [Update-Anleitung für bestehende Installationen](UPDATE.md) beschreibt Sicherung, Image-Wechsel auf `0.6.0`, Prüfungen und Rückweg. Per SSH im bisherigen Projektordner ausführen (je nach Einrichtung mit `sudo`). Die vorhandene `.env` beibehalten und darin nur `FILLENS_VERSION` ändern; keine neuen Secrets erzeugen und keinen neuen Administrator anlegen.
+Die [Update-Anleitung für bestehende Installationen](UPDATE.md) beschreibt Sicherung, Image-Wechsel auf `0.7.0`, Prüfungen und Rückweg. Per SSH im bisherigen Projektordner ausführen (je nach Einrichtung mit `sudo`). Die vorhandene `.env` beibehalten und darin nur `FILLENS_VERSION` ändern; keine neuen Secrets erzeugen und keinen neuen Administrator anlegen.
 
 Datenbankmigrationen laufen beim Backend-Start automatisch. Vor dem Neustart den alten Worker stoppen, damit er nicht gegen das neue Schema arbeitet. Ein Rückwechsel erfordert die passende vollständige Sicherung. `docker compose down -v` ist kein Update-Schritt.
 

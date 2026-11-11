@@ -1,5 +1,22 @@
 # Änderungsprotokoll
 
+## 0.7.0 · 11.11.2026
+
+Update bestehender Installationen: [Anleitung](UPDATE.md). Von 0.6.0 aus ohne Migration (Schema bleibt 0011); Images bzw. Quellen wechseln, `.env` und Volumes beibehalten. Vor dem Update trotzdem Datenbank und Bildbestände sichern.
+
+### Benutzerverwaltung
+
+- Admins können ein neues Passwort für ein Konto setzen (mindestens 12 Zeichen, Wiederholung). Offene Rücksetzcodes und alle Sitzungen des Kontos werden beendet; beim eigenen Konto bleibt nur die aktuelle Sitzung.
+- Admins können Konten dauerhaft löschen. Das eigene Konto und der letzte aktive Admin sind ausgeschlossen. Messwerte, Lernbilder und Modelle bleiben erhalten; ihr Ersteller-Bezug wird geleert bzw. bei Pflichtfeldern auf den löschenden Admin übertragen.
+- Admins können die Rolle eines Kontos (Benutzer/Administrator) in der Tabelle ändern. Die Änderung gilt sofort ohne Neuanmeldung. Die eigene Rolle ist gesperrt, damit immer ein aktiver Admin bleibt.
+- Neue Endpunkte `PUT /api/users/{id}/role`, `PUT /api/users/{id}/password` und `DELETE /api/users/{id}`, admin-/CSRF-geschützt.
+
+### Füllstandskorrektur am Kamerabild
+
+- Dashboard (Übersichtskarten und Detailansicht): „Füllstand korrigieren“ direkt unter dem aktuellen Kamerabild. Der Wert wird als Messwert gespeichert und zugleich als bestätigtes Lernbild übernommen; gleiche Rechte wie im Training.
+- Entfernt: „Jetzt bewerten“, „Unter Training prüfen“ und der Admin-Dialog „Messwert eintragen“ im Dashboard. Die Trainingsseite bleibt unverändert.
+- Neuer Endpunkt `POST /api/containers/{id}/level-correction`; korrigiert auch einen bereits automatisch übernommenen Messwert des neuesten Bildes und berechnet Raten neu. Keine Migration, keine neue Bibliothek.
+
 ## 0.6.0 · 09.11.2026
 
 Update bestehender Installationen: [Anleitung mit Sicherung und Wiederherstellung](UPDATE.md). Migrationen 0009–0011 laufen beim Backend-Start; vorhandene Konten, FTP-Zuordnungen, Bewertungen und Modelle bleiben erhalten. Vorher Datenbank, Konfiguration und beide Bildbestände sichern. Standardaufbewahrung automatisch gesammelter, unbewerteter Bilder: sieben Tage.

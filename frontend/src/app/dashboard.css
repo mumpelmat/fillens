@@ -71,6 +71,23 @@
 .ftp-test-result { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--border); border-radius: 7px; font-size: 12px; overflow-wrap: anywhere; }
 .ftp-test-result.is-success { background: #edf5ed; color: #285e40; }
 .ftp-test-result.is-error { background: #fff4e3; color: #805821; }
+.level-correction { margin: 10px 18px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: #f7f9f5; font-size: 12px; color: #52674b; }
+.dashboard-main .camera-panel .level-correction { margin: 12px 0 0; }
+.level-correction-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.level-correction-row > span:first-child strong { color: #1e3d30; font-size: 14px; }
+.level-correction-row > button { margin-left: auto; }
+.level-correction-saved { display: inline-flex; align-items: center; gap: 4px; color: #285e40; }
+.level-correction-form { display: grid; gap: 8px; }
+.level-correction-form label { font-weight: 600; color: #365b46; }
+.level-correction-inputs { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.level-correction-inputs input { width: 96px; height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: #fff; font-size: 14px; }
+.level-correction-form small { color: #6d7967; font-size: 11px; }
+.level-correction-error { color: #a32a22; }
+.role-select { height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: #fff; font-size: 12px; color: #365b46; }
+.role-select:disabled { opacity: .6; }
+.user-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.user-actions .danger-action { color: #a32a22; }
+.user-actions .danger-action:hover { background: #ffebe7; }
 @media (max-width: 1150px) { .fleet-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 700px) {
   .dashboard-main { padding: 14px 14px 0; }
@@ -81,6 +98,8 @@
   .fleet-card .panel-head { padding: 14px; }
   .fleet-card .panel-head h2 { font-size: 17px; }
   .dashboard-main .fleet-card .camera-image { margin-inline: 14px; }
+  .fleet-card .level-correction { margin-inline: 14px; }
+  .level-correction-row > button { margin-left: 0; }
   .fleet-metrics { padding-inline: 14px; }
   .dashboard-main .kpi { min-height: 114px; padding: 10px; }
   .dashboard-main .kpi-grid { gap: 7px; }

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { LoaderCircle, Settings2 } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { Check, LoaderCircle, PencilLine, Settings2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { loadHistories } from "@/lib/history-loader";
-import { api, dashboardLevelTone, number, unit, rateFactor, rateUnit,
+import { api, dashboardLevelTone, number, unit, rateFactor, rateUnit, write,
   type Container, type ContainerEvent, type Measurement } from "@/lib/api";
 
 export type HistoryData = { items: Measurement[]; total_count: number; sampled: boolean };
@@ -126,4 +127,55 @@ export function ContainerSettings({ name, onAction }: { name: string; onAction: 
         }}>{label}</button>)}
     </div>
   </details>;
+}
+
+/** Einzige Korrekturstelle im Dashboard: Messwert des aktuellen Bildes setzen und zugleich lernen. */
+export function LevelCorrection({ container, admin, onSaved }: {
+  container: Container; admin: boolean; onSaved: () => void;
+}) {
+  const image = container.current_image;
+  const view = measurementView(container);
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState("");
+  if (!image || !(admin || container.camera.learning_enabled)) return null;
+  const inputId = `level-correction-${container.id}`;
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!image) return;
+    setBusy(true); setError("");
+    try {
+      const result = await api<{ learned: boolean }>(`/containers/${container.id}/level-correction`,
+        write({ image_id: image.id, fill_level: Number(value) }));
+      setSaved(result.learned ? "Gespeichert und zum Lernen übernommen." : "Messwert gespeichert.");
+      setOpen(false);
+      onSaved();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <div className="level-correction">
+    {!open ? <div className="level-correction-row">
+      <span>{view.estimated ? "Automatisch geschätzt" : view.measured?.analysis_method.startsWith("manual") ? "Bestätigter Füllstand" : "Erkannter Füllstand"}: <strong>{number(view.level)} %</strong></span>
+      {saved && <span className="level-correction-saved" role="status"><Check size={13} /> {saved}</span>}
+      <Button type="button" size="sm" variant="outline" onClick={() => {
+        setValue(view.level == null ? "" : String(Math.round(view.level * 10) / 10)); setError(""); setSaved(""); setOpen(true);
+      }}><PencilLine size={14} /> Füllstand korrigieren</Button>
+    </div> : <form className="level-correction-form" onSubmit={submit}>
+      <label htmlFor={inputId}>Tatsächlicher Füllstand auf diesem Bild</label>
+      <div className="level-correction-inputs">
+        <input id={inputId} autoFocus type="number" inputMode="decimal" min={0} max={100} step="0.1" required
+          value={value} onChange={(event) => setValue(event.target.value)} disabled={busy} />
+        <span>%</span>
+        <Button type="submit" size="sm" disabled={busy}>{busy ? <LoaderCircle size={14} className="spin" /> : <Check size={14} />} Übernehmen</Button>
+        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => { setOpen(false); setError(""); }}>Abbrechen</Button>
+      </div>
+      <small>Wird als Messwert gespeichert und zum Lernen verwendet.</small>
+      {error && <p className="level-correction-error" role="alert">{error}</p>}
+    </form>}
+  </div>;
 }

@@ -20,6 +20,14 @@ class UserCreate(Login):
     role: Literal["admin", "user"] = "user"
 
 
+class RoleSet(Input):
+    role: Literal["admin", "user"]
+
+
+class PasswordSet(Input):
+    password: str = Field(min_length=12, max_length=256)
+
+
 class SiteInput(Input):
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=2000)
@@ -186,3 +194,8 @@ class ManualInput(Input):
     image_id: str
     fill_level: float = Field(ge=0, le=100)
     image_mode: Literal["day", "night_ir", "unknown"] = "unknown"
+
+
+class LevelCorrection(Input):
+    image_id: str = Field(min_length=1, max_length=50)
+    fill_level: float = Field(ge=0, le=100)

@@ -11,6 +11,8 @@ from app.ftp_errors import ImportFailure
 from app.models import Camera, FTPConnection, ImageBuffer, ImportRecord, Measurement
 from app.security import csrf_cookie, decrypt
 from conftest import authenticate
+from fastapi.testclient import TestClient
+from app.main import app
 
 
 def jpeg(value: int) -> bytes:
@@ -368,3 +370,76 @@ def test_history_sampling_keeps_endpoints(admin, container):
         f"/api/containers/{container['id']}/measurements?period=all&limit=12"
     ).json()
     assert len(full["items"]) == 12 and full["sampled"] is False
+
+
+def test_admin_sets_password_and_revokes_sessions(admin):
+    target = admin.post(
+        "/api/users",
+        json={"email": "reset@test.de", "password": "Altes-Passwort-123", "role": "user"},
+    ).json()
+    with TestClient(app) as other:
+        authenticate(other, "reset@test.de", "Altes-Passwort-123")
+        url = f"/api/users/{target['id']}/password"
+        assert other.put(url, json={"password": "Fremd-gesetzt-123"}).status_code == 403
+        assert admin.put(url, json={"password": "zu-kurz"}).status_code == 422
+        assert admin.put(url, json={"password": "Neues-Passwort-123"}).status_code == 200
+        assert other.get("/api/auth/me").status_code == 401
+    with TestClient(app) as fresh:
+        login = {"email": "reset@test.de", "password": "Altes-Passwort-123"}
+        assert fresh.post("/api/auth/login", json=login).status_code == 401
+        authenticate(fresh, "reset@test.de", "Neues-Passwort-123")
+    own = admin.get("/api/auth/me").json()
+    assert admin.put(f"/api/users/{own['id']}/password",
+                     json={"password": "Admin-neu-passwort-1"}).status_code == 200
+    assert admin.get("/api/auth/me").status_code == 200
+
+
+def test_admin_deletes_user_and_keeps_data(admin, container):
+    target = admin.post(
+        "/api/users",
+        json={"email": "weg@test.de", "password": "Loesch-Passwort-123", "role": "user"},
+    ).json()
+    image_id = add_image(container)
+    with TestClient(app) as other:
+        authenticate(other, "weg@test.de", "Loesch-Passwort-123")
+        assert other.post(
+            f"/api/containers/{container['id']}/level-correction",
+            json={"image_id": image_id, "fill_level": 35},
+        ).status_code == 200
+        assert other.delete(f"/api/users/{target['id']}").status_code == 403
+        own = admin.get("/api/auth/me").json()
+        assert admin.delete(f"/api/users/{own['id']}").status_code == 409
+        assert admin.delete(f"/api/users/{target['id']}").status_code == 204
+        assert other.get("/api/auth/me").status_code == 401
+    assert admin.delete(f"/api/users/{target['id']}").status_code == 404
+    assert "weg@test.de" not in [u["email"] for u in admin.get("/api/users").json()]
+    with TestClient(app) as fresh:
+        login = {"email": "weg@test.de", "password": "Loesch-Passwort-123"}
+        assert fresh.post("/api/auth/login", json=login).status_code == 401
+    with SessionLocal() as db:
+        from app.models import TrainingSample
+        measurement = db.scalar(select(Measurement))
+        assert measurement.effective_fill_level == 35 and measurement.created_by is None
+        sample = db.get(TrainingSample, db.get(ImageBuffer, image_id).training_sample_id)
+        assert sample.approved and sample.created_by is None
+
+
+def test_admin_changes_roles_immediately(admin):
+    target = admin.post(
+        "/api/users",
+        json={"email": "rolle@test.de", "password": "Rollen-Passwort-123", "role": "user"},
+    ).json()
+    own = admin.get("/api/auth/me").json()
+    with TestClient(app) as other:
+        authenticate(other, "rolle@test.de", "Rollen-Passwort-123")
+        url = f"/api/users/{target['id']}/role"
+        assert other.put(url, json={"role": "admin"}).status_code == 403
+        assert admin.put(url, json={"role": "chef"}).status_code == 422
+        assert admin.put(url, json={"role": "admin"}).json()["role"] == "admin"
+        # Bestehende Sitzung erhält die neue Rolle ohne Neuanmeldung.
+        assert other.get("/api/users").status_code == 200
+        assert admin.put(f"/api/users/{own['id']}/role", json={"role": "user"}).status_code == 409
+        assert other.put(f"/api/users/{own['id']}/role", json={"role": "user"}).status_code == 200
+        assert admin.get("/api/users").status_code == 403
+        # Eigene Rolle bleibt gesperrt; damit bleibt immer ein aktiver Admin.
+        assert other.put(url, json={"role": "user"}).status_code == 409

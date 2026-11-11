@@ -1,6 +1,6 @@
 [project]
 name = "fillens-backend"
-version = "0.6.0"
+version = "0.7.0"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.12"
 dependencies = [

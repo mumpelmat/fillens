@@ -33,6 +33,46 @@ class Unusable(Input):
     series_name: str | None = Field(default=None, min_length=1, max_length=100)
 
 
+def apply_confirmation(
+    db, camera, sample, fill_level, user, image_mode=None, series_name=None
+):
+    """Lernbild mit Füllstand bestätigen; gemeinsam für Training und Dashboard."""
+    from .training_store import rebalance_window
+
+    old = (
+        sample.target_fill_level,
+        sample.approved,
+        sample.image_mode,
+        sample.series_name,
+    )
+    if sample.rejection_reason:
+        camera.learning_dirty = True
+    sample.rejection_reason = None
+    sample.target_fill_level = fill_level
+    sample.approved = True
+    sample.queue_state = "confirmed"
+    sample.created_by = user.id
+    if image_mode is not None:
+        sample.image_mode = image_mode
+    if series_name is not None:
+        if not series_name.strip():
+            raise HTTPException(422, "Aufnahmegruppe darf nicht leer sein.")
+        sample.series_name = series_name.strip()
+    if old != (
+        sample.target_fill_level,
+        sample.approved,
+        sample.image_mode,
+        sample.series_name,
+    ):
+        camera.learning_dirty = True
+    record = db.scalar(
+        select(TrainingFetchRecord).where(TrainingFetchRecord.sample_id == sample.id)
+    )
+    if record:
+        record.state = "confirmed"
+    rebalance_window(db, camera.id)
+
+
 @router.post("/cameras/{camera_id}/queue/{item_id}/unusable")
 def learn_unusable(camera_id: str, item_id: str, data: Unusable, db: DB, user: CurrentUser):
     from .ml_service import capture_review_sample, sample_path
@@ -241,32 +281,9 @@ def confirm(camera_id: str, item_id: str, data: Confirm, db: DB, user: CurrentUs
             409,
             "Bild passt nicht zur aktuellen Kameradrehung. Passende Bilder hinzufügen.",
         )
-    old = (
-        sample.target_fill_level,
-        sample.approved,
-        sample.image_mode,
-        sample.series_name,
+    apply_confirmation(
+        db, camera, sample, data.fill_level, user, data.image_mode, data.series_name
     )
-    if sample.rejection_reason:
-        camera.learning_dirty = True
-    sample.rejection_reason = None
-    sample.target_fill_level = data.fill_level
-    sample.approved = True
-    sample.queue_state = "confirmed"
-    sample.created_by = user.id
-    if data.image_mode is not None:
-        sample.image_mode = data.image_mode
-    if data.series_name is not None:
-        if not data.series_name.strip():
-            raise HTTPException(422, "Aufnahmegruppe darf nicht leer sein.")
-        sample.series_name = data.series_name.strip()
-    if old != (
-        sample.target_fill_level,
-        sample.approved,
-        sample.image_mode,
-        sample.series_name,
-    ):
-        camera.learning_dirty = True
     results = list(
         db.scalars(
             select(AnalysisResult)
@@ -296,14 +313,6 @@ def confirm(camera_id: str, item_id: str, data: Confirm, db: DB, user: CurrentUs
             create_analysis_measurement(db, result, camera, data.fill_level, user.id)
             result.status = "reviewed"
             created = True
-    record = db.scalar(
-        select(TrainingFetchRecord).where(TrainingFetchRecord.sample_id == sample.id)
-    )
-    if record:
-        record.state = "confirmed"
-    from .training_store import rebalance_window
-
-    rebalance_window(db, camera_id)
     db.commit()
     return {
         "ok": True,
