@@ -1,4 +1,8 @@
-# Softwarespezifikation · Fillens 0.7.0
+# Softwarespezifikation · Fillens 0.7.1
+
+## Version 0.7.1 · 13.11.2026: Versionsanzeige
+
+Login-Seite (unter dem Quellcode-Link) und Portal-Fußzeile zeigen „Version x.y.z“. Quelle ist `version` aus `frontend/package.json`; `next.config.ts` setzt daraus beim Build `NEXT_PUBLIC_APP_VERSION`. Keine API-Änderung, keine Migration.
 
 ## Version 0.7.0 · 11.11.2026: Kontoverwaltung und Füllstandskorrektur
 

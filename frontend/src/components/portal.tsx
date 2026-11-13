@@ -73,6 +73,7 @@ import {
 } from "@/lib/api";
 
 const SOURCE_URL = "https://github.com/mumpelmat/fillens";
+const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "";
 
 type Page =
   | "dashboard"
@@ -324,6 +325,7 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
           >
             Quellcode (AGPL-3.0)
           </a>
+          {APP_VERSION && <span className="app-version">Version {APP_VERSION}</span>}
         </span>
       </section>
       <section className="login-form">
@@ -2255,6 +2257,9 @@ export default function Portal({
               >
                 Quellcode (AGPL-3.0)
               </a>
+              {APP_VERSION && (
+                <span className="app-version">Version {APP_VERSION}</span>
+              )}
             </span>
           </footer>
         </main>

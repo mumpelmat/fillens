@@ -1,5 +1,11 @@
 # Änderungsprotokoll
 
+## 0.7.1 · 13.11.2026
+
+Update bestehender Installationen: [Anleitung](UPDATE.md). Von 0.7.0 aus ohne Migration (Schema bleibt 0011); nur Images bzw. Quellen wechseln.
+
+- Versionsanzeige auf der Login-Seite und in der Fußzeile des Portals. Die Nummer stammt aus `frontend/package.json` und wird beim Build eingebunden.
+
 ## 0.7.0 · 11.11.2026
 
 Update bestehender Installationen: [Anleitung](UPDATE.md). Von 0.6.0 aus ohne Migration (Schema bleibt 0011); Images bzw. Quellen wechseln, `.env` und Volumes beibehalten. Vor dem Update trotzdem Datenbank und Bildbestände sichern.

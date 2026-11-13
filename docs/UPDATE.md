@@ -1,11 +1,14 @@
-# Bestehende Installationen auf 0.7.0 aktualisieren
+# Bestehende Installationen auf 0.7.1 aktualisieren
 
 Für Docker-Compose-Installationen ab 0.5.2. Es ist keine Neuinstallation erforderlich. Vorhandene Benutzer, Passwörter, Rollen, FTP-Zuordnungen, Messwerte, bestätigte Lernbilder und Modelle bleiben erhalten. Ältere Ausgangsversionen zuerst in einer Kopie prüfen.
 
 | Ausgangsversion | Datenbank |
 |---|---|
+| 0.7.0 | Keine Migration; Schema bleibt `0011`. Nur Images bzw. Quellen wechseln. |
 | 0.6.0 | Keine Migration; Schema bleibt `0011`. Nur Images bzw. Quellen wechseln. |
 | 0.5.2 | Migrationen 0009–0011 laufen beim Backend-Start automatisch. |
+
+Neu in 0.7.1: Login-Seite und Fußzeile im Portal zeigen die installierte Version an.
 
 Neu in 0.7.0: Admins ändern Rollen, setzen Passwörter und löschen Konten unter **Benutzer**. Im Dashboard ersetzt **Füllstand korrigieren** unter dem Kamerabild die bisherigen Aktionen „Jetzt bewerten“ und „Messwert eintragen“. Die Korrektur ändert den Messwert des neuesten Bildes und speichert ihn als bestätigtes Lernbild.
 
@@ -20,7 +23,7 @@ Wartungsfenster einplanen, laufende Trainings möglichst abschließen lassen und
 ```bash
 set -eu
 umask 077
-backup_dir="backups/vor-0.7.0-$(date +%Y%m%d-%H%M%S)"
+backup_dir="backups/vor-0.7.1-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$backup_dir"
 cp .env compose.yaml "$backup_dir/"
 docker compose images > "$backup_dir/images.txt"
@@ -38,7 +41,7 @@ Der Hilfscontainer liest die vorhandenen Worker-Mounts; er startet weder Import 
 In der **vorhandenen** `.env` ausschließlich die Versionsauswahl ändern:
 
 ```dotenv
-FILLENS_VERSION=0.7.0
+FILLENS_VERSION=0.7.1
 ```
 
 Dann:
@@ -56,12 +59,12 @@ Eigene Quelländerungen vorab separat sichern und mit dem Release abgleichen. In
 
 ```bash
 git fetch origin --tags
-git checkout v0.7.0
+git checkout v0.7.1
 docker compose build backend worker frontend
 docker compose up -d
 ```
 
-Alternativ das Quell-ZIP samt SHA256-Datei aus dem [Release](https://github.com/mumpelmat/fillens/releases/tag/v0.7.0) herunterladen und vor dem Entpacken `shasum -a 256 -c fillens-0.7.0-source.zip.sha256` ausführen. Quellen ersetzen, eigene `.env`, Compose-Anpassungen und Datenverzeichnisse erhalten. Die Dienste weiterhin mit demselben Compose-Projektnamen und denselben Volumes starten.
+Alternativ das Quell-ZIP samt SHA256-Datei aus dem [Release](https://github.com/mumpelmat/fillens/releases/tag/v0.7.1) herunterladen und vor dem Entpacken `shasum -a 256 -c fillens-0.7.1-source.zip.sha256` ausführen. Quellen ersetzen, eigene `.env`, Compose-Anpassungen und Datenverzeichnisse erhalten. Die Dienste weiterhin mit demselben Compose-Projektnamen und denselben Volumes starten.
 
 ## 3. Prüfen
 

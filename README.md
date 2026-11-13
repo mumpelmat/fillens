@@ -42,7 +42,7 @@ Kameras legen Bilder per FTP ab. Fillens importiert sie, erfasst Füllstände ma
   </tr>
 </table>
 
-Version **0.7.0**, Stand **11.11.2026**. Änderungen im [Änderungsprotokoll](docs/CHANGELOG.md).
+Version **0.7.1**, Stand **13.11.2026**. Änderungen im [Änderungsprotokoll](docs/CHANGELOG.md).
 
 ## Schnellstart mit Docker
 
@@ -236,7 +236,7 @@ Ein einzelner Worker ist vorgesehen. Ein zweiter wird abgewiesen. Ein Scan erfol
 
 ## Backup und Update
 
-Für bestehende Installationen gilt die [Update-Anleitung für Version 0.7.0](docs/UPDATE.md), mit getrennten Schritten für fertige Images und lokale Quellcode-Builds.
+Für bestehende Installationen gilt die [Update-Anleitung für Version 0.7.1](docs/UPDATE.md), mit getrennten Schritten für fertige Images und lokale Quellcode-Builds.
 
 **Datenbank, `.env` mit Fernet-Schlüssel, Compose-Konfiguration und beide Bildbestände (`image_data` und `ml_data` beziehungsweise `ml/`) zusammen sichern.** Backend und Worker müssen während der Sicherung gestoppt sein, damit Datenbank und Dateien zusammenpassen. Ohne Fernet-Schlüssel sind gespeicherte FTP-/SMTP-Zugangsdaten nicht mehr lesbar.
 

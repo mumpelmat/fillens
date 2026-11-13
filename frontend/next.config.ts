@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { NextConfig } from "next";
+import packageJson from "./package.json";
 
 const basePath = process.env.APP_BASE_PATH || "";
 if (basePath && !/^\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+$/.test(basePath))
@@ -9,6 +10,7 @@ const config: NextConfig = {
   basePath,
   env: {
     NEXT_PUBLIC_APP_BASE_PATH: basePath,
+    NEXT_PUBLIC_APP_VERSION: packageJson.version,
     NEXT_PUBLIC_COOKIE_SUFFIX: createHash("sha256")
       .update(basePath)
       .digest("hex")

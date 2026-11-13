@@ -51,7 +51,7 @@ from .user_admin import delete_user, set_password, set_role
 
 app = FastAPI(
     title="Fillens API",
-    version="0.7.0",
+    version="0.7.1",
     docs_url=None,
     redoc_url=None,
     openapi_url=None,

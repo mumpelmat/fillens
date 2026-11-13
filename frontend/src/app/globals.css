@@ -1154,6 +1154,12 @@ tbody tr:last-child td {
   font-size: 10px;
   color: #91b09a;
 }
+.app-version {
+  margin-left: 10px;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .source-link {
   color: inherit;
   margin-left: 6px;
