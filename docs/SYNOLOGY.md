@@ -38,7 +38,7 @@ Weitere Werte:
 
 | Variable | Empfehlung |
 |---|---|
-| `FILLENS_VERSION` | Feste Version wie `0.8.0` statt `latest`, damit Updates bewusst erfolgen; das Update im Portal setzt diesen Wert selbst |
+| `FILLENS_VERSION` | Feste Version wie `0.8.1` statt `latest`, damit Updates bewusst erfolgen; das Update im Portal setzt diesen Wert selbst |
 | `COOKIE_SECURE` | `true` bei Zugriff über HTTPS (Reverse Proxy); nur für einen reinen HTTP-Test im LAN `false` |
 | `BIND_ADDRESS` | `127.0.0.1`, wenn der DSM-Reverse-Proxy genutzt wird; `0.0.0.0` für direkten LAN-Zugriff über `http://<NAS-IP>:3000` |
 | `PORT` | Freier Port auf dem NAS, Standard `3000` |
@@ -85,7 +85,7 @@ Das erzeugte Sicherungsverzeichnis verschlüsselt auf ein anderes Laufwerk über
 
 **Ab 0.8.0 im Portal:** **System → Software-Update → Nach Updates suchen**, dann **Update auf X installieren**. Der Updater sichert vorher die Datenbank nach `backups/`, setzt `FILLENS_VERSION` in der `.env`, lädt die Images und startet die Dienste neu. Kamerabilder (`image_data`) und `ml/` vorher selbst sichern. Ablauf und Grenzen: [UPDATE.md, Abschnitt A](UPDATE.md#a-update-im-portal).
 
-**Umstieg von 0.5.2–0.7.1 auf 0.8.0** einmalig manuell: neue `compose.yaml` übernehmen, `UPDATER_TOKEN` und `FILLENS_VERSION=0.8.0` in die vorhandene `.env` eintragen ([UPDATE.md, Abschnitt B](UPDATE.md#b-einmaliger-umstieg-auf-080-mit-update-funktion)). Per SSH im Projektordner:
+**Umstieg von 0.5.2–0.7.1 auf 0.8.x** einmalig manuell: neue `compose.yaml` übernehmen, `UPDATER_TOKEN` und `FILLENS_VERSION=0.8.1` in die vorhandene `.env` eintragen ([UPDATE.md, Abschnitt B](UPDATE.md#b-einmaliger-umstieg-auf-080-mit-update-funktion)). Per SSH im Projektordner:
 
 ```bash
 sudo docker compose up -d --pull always

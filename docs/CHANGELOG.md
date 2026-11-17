@@ -1,5 +1,11 @@
 # Änderungsprotokoll
 
+## 0.8.1 · 17.11.2026
+
+Update bestehender Installationen: [Anleitung](UPDATE.md). Von 0.8.0 aus per Klick unter **System → Software-Update**; keine Migration (Schema bleibt 0011), `compose.yaml` unverändert.
+
+- Fehler behoben: Im Dashboard (Einzelansicht und „Alle“) hängte sich ein neues Kamerabild bei der Hintergrundaktualisierung unter das vorherige, statt es zu ersetzen; nach einiger Zeit standen mehrere Bilder untereinander. Ursache waren doppelte React-Schlüssel von Kamerabild und Füllstandskorrektur (beide nutzten die Bild-ID).
+
 ## 0.8.0 · 17.11.2026
 
 Update bestehender Installationen: [Anleitung](UPDATE.md). Keine Migration (Schema bleibt 0011). Für Image-Installationen einmalig neue `compose.yaml` übernehmen und `UPDATER_TOKEN` in die `.env` eintragen; danach Updates per Klick im Portal.

@@ -1,4 +1,8 @@
-# Softwarespezifikation · Fillens 0.8.0
+# Softwarespezifikation · Fillens 0.8.1
+
+## Version 0.8.1 · 17.11.2026: Kamerabild im Dashboard
+
+Fehlerbehebung im Frontend (`frontend/src/components/portal.tsx`): `CameraPreview` und `LevelCorrection` erhalten getrennte React-Schlüssel (`image-<id>` bzw. `correction-<id>`). Zuvor teilten beide Geschwister die Bild-ID als Schlüssel; beim Wechsel auf ein neues Bild blieb das alte Element im DOM stehen. Je Behälter wird nun genau das aktuelle Bild angezeigt. Keine API-Änderung, keine Migration, `compose.yaml` unverändert.
 
 ## Version 0.8.0 · 17.11.2026: Update im Portal
 

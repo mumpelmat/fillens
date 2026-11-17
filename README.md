@@ -42,7 +42,7 @@ Kameras legen Bilder per FTP ab. Fillens importiert sie, erfasst Füllstände ma
   </tr>
 </table>
 
-Version **0.8.0**, Stand **17.11.2026**. Änderungen im [Änderungsprotokoll](docs/CHANGELOG.md).
+Version **0.8.1**, Stand **17.11.2026**. Änderungen im [Änderungsprotokoll](docs/CHANGELOG.md).
 
 ## Schnellstart mit Docker
 
@@ -236,7 +236,7 @@ Ein einzelner Worker ist vorgesehen. Ein zweiter wird abgewiesen. Ein Scan erfol
 
 ## Backup und Update
 
-Für bestehende Installationen gilt die [Update-Anleitung](docs/UPDATE.md), mit getrennten Schritten für fertige Images und lokale Quellcode-Builds. Ab 0.8.0 aktualisieren Image-Installationen (Synology) per Klick unter **System → Software-Update**; der Dienst `updater` sichert dabei vorher die Datenbank. Der Umstieg auf 0.8.0 erfolgt einmalig manuell (neue `compose.yaml`, `UPDATER_TOKEN` in der `.env`). Die laufende Version zeigt `/api/health` sowie die Fußzeile.
+Für bestehende Installationen gilt die [Update-Anleitung](docs/UPDATE.md), mit getrennten Schritten für fertige Images und lokale Quellcode-Builds. Ab 0.8.0 aktualisieren Image-Installationen (Synology) per Klick unter **System → Software-Update**; der Dienst `updater` sichert dabei vorher die Datenbank. Der Umstieg auf 0.8.x erfolgt einmalig manuell (neue `compose.yaml`, `UPDATER_TOKEN` in der `.env`). Die laufende Version zeigt `/api/health` sowie die Fußzeile.
 
 **Datenbank, `.env` mit Fernet-Schlüssel, Compose-Konfiguration und beide Bildbestände (`image_data` und `ml_data` beziehungsweise `ml/`) zusammen sichern.** Backend und Worker müssen während der Sicherung gestoppt sein, damit Datenbank und Dateien zusammenpassen. Ohne Fernet-Schlüssel sind gespeicherte FTP-/SMTP-Zugangsdaten nicht mehr lesbar.
 

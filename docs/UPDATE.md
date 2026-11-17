@@ -1,13 +1,13 @@
-# Bestehende Installationen aktualisieren (aktuell: 0.8.0)
+# Bestehende Installationen aktualisieren (aktuell: 0.8.1)
 
 Für Docker-Compose-Installationen ab 0.5.2. Es ist keine Neuinstallation erforderlich. Vorhandene Benutzer, Passwörter, Rollen, FTP-Zuordnungen, Messwerte, bestätigte Lernbilder und Modelle bleiben erhalten. Ältere Ausgangsversionen zuerst in einer Kopie prüfen.
 
 | Ausgangsversion | Datenbank |
 |---|---|
-| 0.7.1, 0.7.0, 0.6.0 | Keine Migration; Schema bleibt `0011`. Nur Images bzw. Quellen wechseln. |
+| 0.8.0, 0.7.1, 0.7.0, 0.6.0 | Keine Migration; Schema bleibt `0011`. Nur Images bzw. Quellen wechseln. |
 | 0.5.2 | Migrationen 0009–0011 laufen beim Backend-Start automatisch. |
 
-Neu in 0.8.0: **Update per Klick im Portal** für Installationen mit fertigen Images (Synology/Server). `/api/health` meldet zusätzlich die installierte Version. Neu in 0.7.1: Login-Seite und Fußzeile zeigen die installierte Version. Neu in 0.7.0: Kontoverwaltung unter **Benutzer** und **Füllstand korrigieren** unter dem Kamerabild.
+Neu in 0.8.1: Im Dashboard ersetzt ein neues Kamerabild das vorherige, statt sich darunter anzuhängen. Neu in 0.8.0: **Update per Klick im Portal** für Installationen mit fertigen Images (Synology/Server). `/api/health` meldet zusätzlich die installierte Version. Neu in 0.7.1: Login-Seite und Fußzeile zeigen die installierte Version. Neu in 0.7.0: Kontoverwaltung unter **Benutzer** und **Füllstand korrigieren** unter dem Kamerabild.
 
 Beim Wechsel von 0.5.2: Automatisch gesammelte, unbewertete Bilder erhalten standardmäßig **sieben Tage Aufbewahrung**, einstellbar je Kamera von 1 bis 365 Tagen. Bestätigte Beispiele, manuelle Uploads und die neueste Kameravorschau bleiben geschützt. Deshalb vor dem ersten Start der neuen Version auch beide Bildbestände sichern.
 
@@ -37,18 +37,18 @@ Update per Klick wird abgelehnt, wenn das Release die `compose.yaml` ändert ode
 
 ## B. Einmaliger Umstieg auf 0.8.0 mit Update-Funktion
 
-Gilt für bestehende Image-Installationen (0.5.2–0.7.1). Zuerst wie in [C.1](#1-konsistent-sichern) sichern, dann im bisherigen Projektordner:
+Gilt für bestehende Image-Installationen (0.5.2–0.7.1). Der Umstieg erfolgt direkt auf die aktuelle Version 0.8.1. Zuerst wie in [C.1](#1-konsistent-sichern) sichern, dann im bisherigen Projektordner:
 
 1. Die neue [`deploy/synology/compose.yaml`](../deploy/synology/compose.yaml) über die bisherige `compose.yaml` kopieren. Eigene Anpassungen der alten Datei nicht übernehmen, sondern als `compose.override.yaml` daneben legen; sonst ist Update per Klick später gesperrt.
 2. In der **vorhandenen** `.env` zwei Zeilen ergänzen bzw. ändern, alle übrigen Werte unverändert lassen:
 
    ```dotenv
-   FILLENS_VERSION=0.8.0
+   FILLENS_VERSION=0.8.1
    UPDATER_TOKEN=<Ausgabe von: openssl rand -hex 32>
    ```
 
 3. `docker compose up -d --pull always` (Synology: per SSH mit `sudo`, oder im Container Manager das Projekt stoppen und neu erstellen, siehe [SYNOLOGY.md](SYNOLOGY.md#7-update)).
-4. Prüfen wie in [C.3](#3-prüfen); unter **System → Software-Update** muss „Installiert: Version 0.8.0“ ohne Warnung stehen.
+4. Prüfen wie in [C.3](#3-prüfen); unter **System → Software-Update** muss „Installiert: Version 0.8.1“ ohne Warnung stehen.
 
 Der Dienst `updater` erhält Zugriff auf den Docker-Socket und damit Root-Rechte auf dem Host; Hinweise und Abschalten in [SECURITY.md](../SECURITY.md).
 
@@ -89,7 +89,7 @@ Der Hilfscontainer liest die vorhandenen Worker-Mounts; er startet weder Import 
 In der **vorhandenen** `.env` die Zeile `FILLENS_VERSION` auf die Zielversion setzen. **Fehlt die Zeile, läuft das Tag `latest`** – die Zeile dann ergänzen, damit das Update eindeutig ist:
 
 ```dotenv
-FILLENS_VERSION=0.8.0
+FILLENS_VERSION=0.8.1
 ```
 
 Dann die Images ausdrücklich neu laden und starten:
@@ -107,12 +107,12 @@ Eigene Quelländerungen vorab separat sichern und mit dem Release abgleichen. In
 
 ```bash
 git fetch origin --tags
-git checkout v0.8.0
+git checkout v0.8.1
 docker compose build backend worker frontend
 docker compose up -d
 ```
 
-Alternativ das Quell-ZIP samt SHA256-Datei aus dem [Release](https://github.com/mumpelmat/fillens/releases/tag/v0.8.0) herunterladen und vor dem Entpacken `shasum -a 256 -c fillens-0.8.0-source.zip.sha256` ausführen. Quellen ersetzen, eigene `.env`, Compose-Anpassungen und Datenverzeichnisse erhalten. Die Dienste weiterhin mit demselben Compose-Projektnamen und denselben Volumes starten.
+Alternativ das Quell-ZIP samt SHA256-Datei aus dem [Release](https://github.com/mumpelmat/fillens/releases/tag/v0.8.1) herunterladen und vor dem Entpacken `shasum -a 256 -c fillens-0.8.1-source.zip.sha256` ausführen. Quellen ersetzen, eigene `.env`, Compose-Anpassungen und Datenverzeichnisse erhalten. Die Dienste weiterhin mit demselben Compose-Projektnamen und denselben Volumes starten.
 
 ### 3. Prüfen
 
@@ -122,7 +122,7 @@ docker compose exec -T backend alembic current
 curl --fail http://localhost:3000/api/health
 ```
 
-Erwartet: Schema `0011 (head)`, gesunde Dienste und `{"status":"ok","version":"0.8.0"}`. Bei abweichendem Port oder Unterverzeichnis die URL anpassen. Bei Fehlern `docker compose logs --tail=100 backend worker frontend` prüfen und den Worker bis zur Klärung gestoppt lassen.
+Erwartet: Schema `0011 (head)`, gesunde Dienste und `{"status":"ok","version":"0.8.1"}`. Bei abweichendem Port oder Unterverzeichnis die URL anpassen. Bei Fehlern `docker compose logs --tail=100 backend worker frontend` prüfen und den Worker bis zur Klärung gestoppt lassen.
 
 Mit einem bestehenden Konto anmelden. Fußzeile und Login-Seite zeigen die Version; zeigt der Browser noch die alte Oberfläche, die Seite hart neu laden (Strg+Umschalt+R bzw. Cmd+Umschalt+R). Behälter, Kameras, Messungen und Lernbewertungen kontrollieren.
 

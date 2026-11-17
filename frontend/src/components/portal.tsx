@@ -1020,10 +1020,10 @@ function ContainerOverviewCard({ container, site, admin, data, period, setPeriod
       <span>{!container.camera.active ? "Kamera inaktiv" : container.camera.analysis_enabled ? "Lokale Auswertung" : "Manueller Betrieb"}</span>
       {container.active && container.alert_severity > 0 && <span>Aktive Meldung zum übernommenen Füllstand</span>}
     </div>
-    {container.current_image ? <CameraPreview key={container.current_image.id} image={container.current_image}
+    {container.current_image ? <CameraPreview key={`image-${container.current_image.id}`} image={container.current_image}
       name={container.name} timezone={timezone} onRefresh={onRefresh} />
       : <Empty icon={CameraIcon} title="Noch kein Kamerabild">Für diesen Behälter ist noch kein Bild verfügbar.</Empty>}
-    <LevelCorrection key={container.current_image?.id || "none"} container={container} admin={admin} onSaved={onRefresh} />
+    <LevelCorrection key={`correction-${container.current_image?.id || "none"}`} container={container} admin={admin} onSaved={onRefresh} />
     <div className="fleet-metrics"><MeasurementKpis container={container} /></div>
     <div className="fleet-times">
       <span>Bild: {container.current_image ? date(container.current_image.captured_at, timezone) : "Noch keines vorhanden"}</span>
@@ -1607,7 +1607,7 @@ export default function Portal({
                         {current.current_image ? (
                           <>
                             <CameraPreview
-                              key={current.current_image.id}
+                              key={`image-${current.current_image.id}`}
                               image={current.current_image}
                               name={current.name}
                               timezone={timezone}
@@ -1635,7 +1635,7 @@ export default function Portal({
                               </span>
                             </div>
                             <LevelCorrection
-                              key={current.current_image.id}
+                              key={`correction-${current.current_image.id}`}
                               container={current}
                               admin={admin}
                               onSaved={() => void refresh()}
