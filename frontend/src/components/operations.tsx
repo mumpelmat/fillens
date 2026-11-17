@@ -1,5 +1,11 @@
 "use client";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import {
   LineChart,
   Line,
@@ -22,6 +28,8 @@ import {
   type Container,
   type ContainerEvent,
   type Measurement,
+  type ReleaseInfo,
+  type UpdateState,
 } from "@/lib/api";
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -737,6 +745,186 @@ export function Notifications({ revision }: { revision: number }) {
         >
           Ältere Meldungen
         </Button>
+      </div>
+    </section>
+  );
+}
+
+const UPDATE_GUIDE =
+  "https://github.com/mumpelmat/fillens/blob/main/docs/UPDATE.md";
+
+export function SoftwareUpdate() {
+  const [info, setInfo] = useState<UpdateState | null>(null);
+  const [release, setRelease] = useState<ReleaseInfo | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const status = info?.status;
+  const running = status?.state === "running";
+  const load = useCallback(
+    () =>
+      api<UpdateState>("/system/update")
+        .then((value) => {
+          setInfo(value);
+          return value;
+        })
+        .catch((e) => {
+          setError((e as Error).message);
+          return null;
+        }),
+    [],
+  );
+  useEffect(() => {
+    void load();
+  }, [load]);
+  useEffect(() => {
+    if (!running) return;
+    // Während des Neustarts sind Backend und Portal kurz nicht erreichbar.
+    const timer = window.setInterval(() => {
+      api<UpdateState>("/system/update")
+        .then((value) => {
+          setError("");
+          setInfo(value);
+          if (
+            value.status?.state === "succeeded" &&
+            value.current_version === value.status.version
+          )
+            window.setTimeout(() => window.location.reload(), 2000);
+        })
+        .catch(() => undefined);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [running]);
+  async function check() {
+    setBusy(true);
+    setError("");
+    try {
+      setRelease(await api<ReleaseInfo>("/system/update/check", write({})));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function install(version: string) {
+    if (
+      !window.confirm(
+        `Update auf Version ${version} jetzt installieren?\n\n` +
+          "Die Datenbank wird vorher automatisch gesichert. Kamerabilder und Lernbestand bitte vorher selbst sichern.\n" +
+          "Das Portal ist während des Neustarts einige Minuten nicht erreichbar.",
+      )
+    )
+      return;
+    setBusy(true);
+    setError("");
+    try {
+      await api("/system/update/install", write({ version }));
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const finished =
+    status && status.state !== "idle" && status.state !== "running";
+  return (
+    <section className="panel operations-panel">
+      <div className="panel-head">
+        <div>
+          <h2>Software-Update</h2>
+          <p>
+            Installiert: Version {info?.current_version ?? "…"}
+            {info?.updater === "missing" &&
+              " · Update per Klick nicht eingerichtet"}
+            {info?.updater === "unreachable" && " · Updater nicht erreichbar"}
+          </p>
+        </div>
+      </div>
+      <Error value={error} />
+      {info?.updater === "unreachable" && info.updater_error && (
+        <div className="error-notice" role="alert">
+          {info.updater_error}
+        </div>
+      )}
+      <div className="operations-form">
+        {running && status && (
+          <div className="update-progress" role="status">
+            <strong>
+              Update auf {status.version} läuft. Seite bleibt geöffnet und lädt
+              danach neu.
+            </strong>
+            <ol>
+              {status.steps.map((step) => (
+                <li key={step.at + step.text}>
+                  {date(step.at)} · {step.text}
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+        {finished && status && (
+          <div
+            className={
+              status.state === "succeeded" ? "success-notice" : "error-notice"
+            }
+            role="status"
+          >
+            {status.state === "succeeded"
+              ? `Update auf ${status.version} abgeschlossen${status.finished_at ? " am " + date(status.finished_at) : ""}.`
+              : `Update auf ${status.version} fehlgeschlagen: ${status.error ?? "unbekannter Fehler"}`}
+            {status.backup_dir && ` Sicherung: ${status.backup_dir}`}
+          </div>
+        )}
+        {!running && (
+          <div className="operations-actions">
+            <Button type="button" disabled={busy} onClick={check}>
+              Nach Updates suchen
+            </Button>
+            {release && !release.update_available && (
+              <span role="status">
+                Aktuell: {release.version} ist die neueste Version.
+              </span>
+            )}
+          </div>
+        )}
+        {release?.update_available && !running && (
+          <div className="update-release">
+            <h3>
+              Neue Version {release.version}
+              {release.published_at && ` · ${date(release.published_at)}`}
+            </h3>
+            {release.notes && <pre>{release.notes}</pre>}
+            <div className="operations-actions">
+              {info?.updater === "ready" ? (
+                <Button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => install(release.version)}
+                >
+                  Update auf {release.version} installieren
+                </Button>
+              ) : (
+                <span>
+                  Diese Installation wird{" "}
+                  <a href={UPDATE_GUIDE} target="_blank" rel="noreferrer">
+                    nach Anleitung
+                  </a>{" "}
+                  aktualisiert.
+                </span>
+              )}
+              {release.url && (
+                <a href={release.url} target="_blank" rel="noreferrer">
+                  Release auf GitHub
+                </a>
+              )}
+            </div>
+            <p className="hint">
+              Vor dem Update wird die Datenbank automatisch gesichert.
+              Kamerabilder und Lernbestand bitte vorher selbst sichern. Ändert
+              ein Release die compose.yaml, ist ein manuelles Update nötig.
+            </p>
+          </div>
+        )}
       </div>
     </section>
   );

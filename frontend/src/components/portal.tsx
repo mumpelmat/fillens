@@ -54,6 +54,7 @@ import {
   Events,
   ContainerRules,
   SMTPSettings,
+  SoftwareUpdate,
   Notifications,
 } from "@/components/operations";
 import {
@@ -2051,6 +2052,7 @@ export default function Portal({
           {page === "system" && admin && (
             <>
               <SMTPSettings />
+              <SoftwareUpdate />
               <div className="system-overview">
                 {[
                   {

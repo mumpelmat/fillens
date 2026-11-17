@@ -42,7 +42,7 @@ Kameras legen Bilder per FTP ab. Fillens importiert sie, erfasst Füllstände ma
   </tr>
 </table>
 
-Version **0.7.1**, Stand **13.11.2026**. Änderungen im [Änderungsprotokoll](docs/CHANGELOG.md).
+Version **0.8.0**, Stand **17.11.2026**. Änderungen im [Änderungsprotokoll](docs/CHANGELOG.md).
 
 ## Schnellstart mit Docker
 
@@ -60,7 +60,7 @@ Nach dem ersten Build reicht `docker compose up -d`. PostgreSQL wird zuerst gepr
 
 ## Installation auf Synology
 
-Für den Dauerbetrieb auf einer Synology (DSM 7.2+, Container Manager) gibt es fertige Images für amd64 und arm64 in der GitHub Container Registry (`ghcr.io/mumpelmat/fillens-backend`, `ghcr.io/mumpelmat/fillens-frontend`). Es wird nichts auf dem NAS gebaut. Compose-Datei: [deploy/synology/compose.yaml](deploy/synology/compose.yaml), Schritt-für-Schritt-Anleitung: [docs/SYNOLOGY.md](docs/SYNOLOGY.md).
+Für den Dauerbetrieb auf einer Synology (DSM 7.2+, Container Manager) gibt es fertige Images für amd64 und arm64 in der GitHub Container Registry (`ghcr.io/mumpelmat/fillens-backend`, `ghcr.io/mumpelmat/fillens-frontend`, `ghcr.io/mumpelmat/fillens-updater`). Es wird nichts auf dem NAS gebaut. Compose-Datei: [deploy/synology/compose.yaml](deploy/synology/compose.yaml), Schritt-für-Schritt-Anleitung: [docs/SYNOLOGY.md](docs/SYNOLOGY.md).
 
 ## Erster Papierkorb
 
@@ -236,7 +236,7 @@ Ein einzelner Worker ist vorgesehen. Ein zweiter wird abgewiesen. Ein Scan erfol
 
 ## Backup und Update
 
-Für bestehende Installationen gilt die [Update-Anleitung für Version 0.7.1](docs/UPDATE.md), mit getrennten Schritten für fertige Images und lokale Quellcode-Builds.
+Für bestehende Installationen gilt die [Update-Anleitung](docs/UPDATE.md), mit getrennten Schritten für fertige Images und lokale Quellcode-Builds. Ab 0.8.0 aktualisieren Image-Installationen (Synology) per Klick unter **System → Software-Update**; der Dienst `updater` sichert dabei vorher die Datenbank. Der Umstieg auf 0.8.0 erfolgt einmalig manuell (neue `compose.yaml`, `UPDATER_TOKEN` in der `.env`). Die laufende Version zeigt `/api/health` sowie die Fußzeile.
 
 **Datenbank, `.env` mit Fernet-Schlüssel, Compose-Konfiguration und beide Bildbestände (`image_data` und `ml_data` beziehungsweise `ml/`) zusammen sichern.** Backend und Worker müssen während der Sicherung gestoppt sein, damit Datenbank und Dateien zusammenpassen. Ohne Fernet-Schlüssel sind gespeicherte FTP-/SMTP-Zugangsdaten nicht mehr lesbar.
 

@@ -240,3 +240,28 @@ export function dashboardLevelTone(
     return level <= 5 ? "red" : level <= 20 ? "orange" : "normal";
   return level >= 95 ? "red" : level >= 80 ? "orange" : "normal";
 }
+export type UpdateStatus = {
+  state: "idle" | "running" | "succeeded" | "failed";
+  version: string | null;
+  from_version: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  backup_dir: string | null;
+  error: string | null;
+  steps: { at: string; text: string }[];
+};
+export type UpdateState = {
+  current_version: string;
+  updater: "missing" | "unreachable" | "ready";
+  updater_error?: string;
+  status: UpdateStatus | null;
+};
+export type ReleaseInfo = {
+  version: string;
+  name: string;
+  published_at: string | null;
+  notes: string;
+  url: string | null;
+  current_version: string;
+  update_available: boolean;
+};

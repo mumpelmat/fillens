@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     )
     max_scan_files: int = Field(default=10000, ge=1, le=1000000)
     max_imports_per_cycle: int = Field(default=100, ge=1, le=10000)
+    # Update-Funktion: nur bei Image-Installationen mit Updater-Dienst gesetzt.
+    updater_url: str = ""
+    updater_token: str = ""
+    release_api_url: str = (
+        "https://api.github.com/repos/mumpelmat/fillens/releases/latest"
+    )
 
     @field_validator("app_base_path")
     @classmethod

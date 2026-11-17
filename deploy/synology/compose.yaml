@@ -14,6 +14,8 @@ x-app-environment: &app-environment
   MAX_IMAGE_BYTES: ${MAX_IMAGE_BYTES:-15728640}
   MAX_SCAN_FILES: ${MAX_SCAN_FILES:-10000}
   MAX_IMPORTS_PER_CYCLE: ${MAX_IMPORTS_PER_CYCLE:-100}
+  UPDATER_URL: http://updater:8080
+  UPDATER_TOKEN: ${UPDATER_TOKEN:-}
 services:
   postgres:
     image: postgres:17-alpine
@@ -36,7 +38,7 @@ services:
       - ./ml:/ml
     restart: "no"
   backend:
-    image: ghcr.io/mumpelmat/fillens-backend:${FILLENS_VERSION:-latest}
+    image: ${FILLENS_IMAGE_PREFIX:-ghcr.io/mumpelmat/fillens}-backend:${FILLENS_VERSION:-latest}
     environment: *app-environment
     volumes:
       - image_data:/data:ro
@@ -54,7 +56,7 @@ services:
       start_period: 20s
     restart: unless-stopped
   worker:
-    image: ghcr.io/mumpelmat/fillens-backend:${FILLENS_VERSION:-latest}
+    image: ${FILLENS_IMAGE_PREFIX:-ghcr.io/mumpelmat/fillens}-backend:${FILLENS_VERSION:-latest}
     command: [python, -m, app.worker]
     environment: *app-environment
     volumes:
@@ -71,7 +73,7 @@ services:
     restart: unless-stopped
     stop_grace_period: 45s
   frontend:
-    image: ghcr.io/mumpelmat/fillens-frontend:${FILLENS_VERSION:-latest}
+    image: ${FILLENS_IMAGE_PREFIX:-ghcr.io/mumpelmat/fillens}-frontend:${FILLENS_VERSION:-latest}
     environment:
       BACKEND_INTERNAL_URL: http://backend:8000
       MAX_TRAINING_UPLOAD_BYTES: ${MAX_IMAGE_BYTES:-15728640}
@@ -85,6 +87,16 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+    restart: unless-stopped
+  # Update per Klick im Portal (System → Software-Update). Benötigt den Docker-Socket und
+  # damit Root-Rechte auf dem Host; ohne diesen Dienst zeigt das Portal die Update-Anleitung.
+  updater:
+    image: ${FILLENS_IMAGE_PREFIX:-ghcr.io/mumpelmat/fillens}-updater:${FILLENS_VERSION:-latest}
+    environment:
+      UPDATER_TOKEN: ${UPDATER_TOKEN:?UPDATER_TOKEN in .env setzen}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/project
     restart: unless-stopped
 volumes:
   # Kamerabilder: zusammen mit Datenbank und ML-Bestand sichern

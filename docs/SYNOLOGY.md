@@ -9,6 +9,7 @@ Diese Anleitung beschreibt den Betrieb mit dem **Container Manager** (DSM 7.2 od
 | `worker` | `ghcr.io/mumpelmat/fillens-backend` | Bildpuffer (Docker-Volume), Ordner `ml/` |
 | `frontend` (Portal) | `ghcr.io/mumpelmat/fillens-frontend` | – |
 | `ml-init` | `busybox` | setzt einmalig die Rechte für `ml/` und beendet sich |
+| `updater` | `ghcr.io/mumpelmat/fillens-updater` | Update per Klick im Portal; Zugriff auf Docker-Socket und Projektordner |
 
 ## 1. Projektordner anlegen
 
@@ -21,13 +22,14 @@ Die Ordner `postgres/` und `ml/` legt Docker beim ersten Start selbst an.
 
 ## 2. Secrets in `.env` eintragen
 
-`POSTGRES_PASSWORD` und `ENCRYPTION_KEY` müssen zufällig erzeugt werden. Der Fernet-Schlüssel verschlüsselt die gespeicherten FTP-/SMTP-Passwörter und muss dauerhaft sicher aufbewahrt werden: Ohne ihn sind diese Zugangsdaten nach einer Wiederherstellung nicht mehr lesbar.
+`POSTGRES_PASSWORD`, `ENCRYPTION_KEY` und `UPDATER_TOKEN` müssen zufällig erzeugt werden. Der Fernet-Schlüssel verschlüsselt die gespeicherten FTP-/SMTP-Passwörter und muss dauerhaft sicher aufbewahrt werden: Ohne ihn sind diese Zugangsdaten nach einer Wiederherstellung nicht mehr lesbar.
 
 Per SSH auf der Synology (oder auf einem beliebigen Rechner mit OpenSSL):
 
 ```bash
 openssl rand -hex 32                          # → POSTGRES_PASSWORD
 openssl rand -base64 32 | tr '+/' '-_'        # → ENCRYPTION_KEY
+openssl rand -hex 32                          # → UPDATER_TOKEN
 ```
 
 Alternativ auf einem Rechner mit Python im Repository `python3 scripts/init_env.py` ausführen und die beiden Werte aus der erzeugten `.env` übernehmen.
@@ -36,7 +38,7 @@ Weitere Werte:
 
 | Variable | Empfehlung |
 |---|---|
-| `FILLENS_VERSION` | Feste Version wie `0.7.1` statt `latest`, damit Updates bewusst erfolgen |
+| `FILLENS_VERSION` | Feste Version wie `0.8.0` statt `latest`, damit Updates bewusst erfolgen; das Update im Portal setzt diesen Wert selbst |
 | `COOKIE_SECURE` | `true` bei Zugriff über HTTPS (Reverse Proxy); nur für einen reinen HTTP-Test im LAN `false` |
 | `BIND_ADDRESS` | `127.0.0.1`, wenn der DSM-Reverse-Proxy genutzt wird; `0.0.0.0` für direkten LAN-Zugriff über `http://<NAS-IP>:3000` |
 | `PORT` | Freier Port auf dem NAS, Standard `3000` |
@@ -81,14 +83,24 @@ Das erzeugte Sicherungsverzeichnis verschlüsselt auf ein anderes Laufwerk über
 
 ## 7. Update
 
-Die [Update-Anleitung für bestehende Installationen](UPDATE.md) beschreibt Sicherung, Image-Wechsel auf `0.7.1`, Prüfungen und Rückweg. Per SSH im bisherigen Projektordner ausführen (je nach Einrichtung mit `sudo`). Die vorhandene `.env` beibehalten und darin nur `FILLENS_VERSION` ändern; keine neuen Secrets erzeugen und keinen neuen Administrator anlegen.
+**Ab 0.8.0 im Portal:** **System → Software-Update → Nach Updates suchen**, dann **Update auf X installieren**. Der Updater sichert vorher die Datenbank nach `backups/`, setzt `FILLENS_VERSION` in der `.env`, lädt die Images und startet die Dienste neu. Kamerabilder (`image_data`) und `ml/` vorher selbst sichern. Ablauf und Grenzen: [UPDATE.md, Abschnitt A](UPDATE.md#a-update-im-portal).
 
-Datenbankmigrationen laufen beim Backend-Start automatisch. Vor dem Neustart den alten Worker stoppen, damit er nicht gegen das neue Schema arbeitet. Ein Rückwechsel erfordert die passende vollständige Sicherung. `docker compose down -v` ist kein Update-Schritt.
+**Umstieg von 0.5.2–0.7.1 auf 0.8.0** einmalig manuell: neue `compose.yaml` übernehmen, `UPDATER_TOKEN` und `FILLENS_VERSION=0.8.0` in die vorhandene `.env` eintragen ([UPDATE.md, Abschnitt B](UPDATE.md#b-einmaliger-umstieg-auf-080-mit-update-funktion)). Per SSH im Projektordner:
+
+```bash
+sudo docker compose up -d --pull always
+```
+
+Über die Oberfläche: Die `.env` mit dem Text-Editor bzw. per File Station anpassen. Dann **Container Manager → Projekt → fillens → Stoppen** und anschließend das Projekt neu **Erstellen** (bzw. **Aktion → Erstellen**), damit die Images der neuen Version geladen werden. Ein bloßes **Neu starten** lädt keine neuen Images; die alte Version läuft dann weiter. Welche Menübeschriftung die jeweilige DSM-Version verwendet und ob dabei immer neu geladen wird: Noch zu klären (auf realer Hardware zu bestätigen). Im Zweifel den SSH-Befehl verwenden.
+
+Keine neuen Secrets für `POSTGRES_PASSWORD`/`ENCRYPTION_KEY` erzeugen und keinen neuen Administrator anlegen. Ein Rückwechsel erfordert die passende vollständige Sicherung. `docker compose down -v` ist kein Update-Schritt.
 
 ## Fehlersuche
 
 | Symptom | Prüfung |
 |---|---|
+| Nach dem Update läuft weiter die alte Version | `FILLENS_VERSION` in der `.env` prüfen (fehlt sie, gilt das lokal zwischengespeicherte `latest`); dann `sudo docker compose up -d --pull always`. Version prüfen mit `curl http://localhost:3000/api/health` |
+| Software-Update meldet „Updater nicht erreichbar“ | `UPDATER_TOKEN` in `.env` gesetzt? Protokoll von `fillens-updater-1` im Container Manager ansehen |
 | Image lässt sich nicht laden (`denied`/`unauthorized`) | Pakete in der GitHub Container Registry sind noch nicht öffentlich oder die Version existiert nicht |
 | Backend startet nicht, `ml-init` fehlgeschlagen | Rechte des Ordners `/volume1/docker/fillens`; `ml-init`-Protokoll im Container Manager ansehen |
 | Anmeldung schlägt ohne Fehlermeldung fehl | `COOKIE_SECURE=true` bei Zugriff über HTTP; HTTPS nutzen oder für Tests `false` setzen |

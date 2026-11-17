@@ -1,5 +1,29 @@
 # Änderungsprotokoll
 
+## 0.8.0 · 17.11.2026
+
+Update bestehender Installationen: [Anleitung](UPDATE.md). Keine Migration (Schema bleibt 0011). Für Image-Installationen einmalig neue `compose.yaml` übernehmen und `UPDATER_TOKEN` in die `.env` eintragen; danach Updates per Klick im Portal.
+
+### Update im Portal
+
+- Neue Kachel **System → Software-Update** (nur Admins): installierte Version, **Nach Updates suchen** (GitHub-Releases, nur auf Klick), Änderungen des neuen Release und **Update auf X installieren** mit Bestätigung und Fortschrittsanzeige. Die Seite lädt nach erfolgreichem Update neu.
+- Neuer Dienst `updater` (Image `ghcr.io/mumpelmat/fillens-updater`, Docker-CLI 27 mit Compose, Python-Standardbibliothek) in `deploy/synology/compose.yaml`. Ablauf: Images laden → Datenbank-Dump und Kopie von `.env`/`compose.yaml` nach `backups/vor-X-<Zeit>/` → Worker/Backend stoppen → `FILLENS_VERSION` setzen → Dienste neu starten → auf gesunde neue Version warten → sich selbst erneuern. Fehler vor dem Versionswechsel lassen die alte Version unverändert weiterlaufen.
+- Update per Klick nur, wenn die lokale `compose.yaml` der des Ziel-Release entspricht (Release-Asset `fillens-X-update.json` mit SHA256); sonst Verweis auf die manuelle Anleitung.
+- Neue Endpunkte `GET /api/system/update`, `POST /api/system/update/check`, `POST /api/system/update/install` (Admin, CSRF). Neue optionale Einstellungen `UPDATER_URL`, `UPDATER_TOKEN`, `RELEASE_API_URL`.
+- Quellcode-Installationen (Root-`compose.yaml`) erhalten keinen Updater; das Portal zeigt dort die Anleitung.
+
+### Robusterer manueller Update-Weg
+
+- Ursache „alte Version bleibt“: `FILLENS_VERSION` in der `.env` nicht angepasst oder fehlend (`latest` aus dem lokalen Zwischenspeicher) bzw. Neustart ohne Pull. Anleitung jetzt mit `docker compose up -d --pull always`, Standermittlung vorab und Fehlersuche.
+- `/api/health` liefert zusätzlich `version`; Version zentral in `backend/app/version.py`.
+### Abhängigkeiten
+
+- Next.js 16.4.3 → 16.4.5 (Sicherheitshinweis GHSA-mfr8-8qww-v76h; Fillens nutzt `'use cache'` nicht, der Next-Build brach wegen der Warnung aber zeitweise ab). `npm audit`: keine bekannten Lücken.
+
+### Sonstiges
+
+- `deploy/synology/compose.yaml`: optionales `FILLENS_IMAGE_PREFIX` (Standard `ghcr.io/mumpelmat/fillens`), z. B. für eigene Registry-Spiegel.
+
 ## 0.7.1 · 13.11.2026
 
 Update bestehender Installationen: [Anleitung](UPDATE.md). Von 0.7.0 aus ohne Migration (Schema bleibt 0011); nur Images bzw. Quellen wechseln.

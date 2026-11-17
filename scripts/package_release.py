@@ -8,7 +8,8 @@ from zipfile import ZIP_DEFLATED, ZipFile
 root = Path(__file__).resolve().parents[1]
 version = json.loads((root / "frontend/package.json").read_text())["version"]
 backend_version = re.search(r'^version = "([^"]+)"', (root / "backend/pyproject.toml").read_text(), re.MULTILINE)
-if not re.fullmatch(r"\d+\.\d+\.\d+", version) or not backend_version or backend_version.group(1) != version:
+app_version = re.search(r'^APP_VERSION = "([^"]+)"', (root / "backend/app/version.py").read_text(), re.MULTILINE)
+if not re.fullmatch(r"\d+\.\d+\.\d+", version) or not backend_version or backend_version.group(1) != version or not app_version or app_version.group(1) != version:
     raise SystemExit("Frontend- und Backend-Version stimmen nicht überein")
 
 root_files = [".gitignore", ".env.example", "compose.yaml", "README.md", "README.en.md", "LICENSE", "CONTRIBUTING.md", "SECURITY.md", "ARCHITECTURE.md", "ML.md"]
@@ -16,7 +17,7 @@ excluded = {"node_modules", ".venv", ".next", "__pycache__", ".pytest_cache", ".
 internal_docs = {"docs/AI_SESSION_HANDOFF.md", "docs/PLAN_REVIEW.md", "docs/SOFTWARE_ASSET_MEMO.md"}
 extensions = {".py", ".toml", ".lock", ".ini", ".mako", ".md", ".tsx", ".ts", ".json", ".css", ".mjs", ".svg", ".png", ".yaml", ".yml"}
 files = [root / path for path in root_files]
-for directory in ("backend", "frontend", "scripts", "docs", "deploy", ".github"):
+for directory in ("backend", "frontend", "updater", "scripts", "docs", "deploy", ".github"):
     for file in (root / directory).rglob("*"):
         relative = file.relative_to(root)
         if set(relative.parts) & excluded or relative.as_posix() in internal_docs or not file.is_file():
@@ -40,4 +41,7 @@ with ZipFile(archive, "w", ZIP_DEFLATED, compresslevel=9) as output:
     output.writestr(f"fillens-{version}/RELEASE_CONTENTS.json", json.dumps({"version": version, "files": manifest}, ensure_ascii=False, indent=2))
 checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
 archive.with_suffix(".zip.sha256").write_text(f"{checksum}  {archive.name}\n")
-print(f"{archive}\n{len(files)} Quelldateien, {archive.stat().st_size} Bytes\nSHA256: {checksum}")
+# Release-Asset für den Updater: Update per Klick nur bei unveränderter Synology-compose.yaml.
+compose_sha256 = hashlib.sha256((root / "deploy/synology/compose.yaml").read_bytes()).hexdigest()
+(destination / f"fillens-{version}-update.json").write_text(json.dumps({"version": version, "compose_sha256": compose_sha256}, indent=2) + "\n")
+print(f"{archive}\n{len(files)} Quelldateien, {archive.stat().st_size} Bytes\nSHA256: {checksum}\nUpdate-Beschreibung: fillens-{version}-update.json (unverändert als Release-Asset hochladen)")

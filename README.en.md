@@ -49,7 +49,7 @@ Prebuilt images for `amd64` and `arm64` are published to the GitHub Container Re
 - `ghcr.io/mumpelmat/fillens-frontend`
 
 1. Create `/volume1/docker/fillens` and copy [deploy/synology/compose.yaml](deploy/synology/compose.yaml) and [deploy/synology/.env.example](deploy/synology/.env.example) (as `.env`) into it.
-2. Generate secrets: `openssl rand -hex 32` → `POSTGRES_PASSWORD`, `openssl rand -base64 32 | tr '+/' '-_'` → `ENCRYPTION_KEY`. Keep the encryption key safe.
+2. Generate secrets: `openssl rand -hex 32` → `POSTGRES_PASSWORD` and `UPDATER_TOKEN`, `openssl rand -base64 32 | tr '+/' '-_'` → `ENCRYPTION_KEY`. Keep the encryption key safe.
 3. Container Manager → Project → Create → use existing `compose.yaml`.
 4. Create the first admin: `sudo docker compose exec backend python -m app.cli create-admin --email admin@example.com`.
 5. Put the DSM reverse proxy (HTTPS) in front of `localhost:3000`.
@@ -72,6 +72,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Please report security issues privately 
 
 With learning enabled, imported images enter the review queue even without a model or ROI. Admins can upload images, choose automatic or manual training, and set automatic-image retention to 1–365 days (default seven). Confirmed positive/negative examples and uploads are retained. The latest camera preview stays available. Background updates announce new images without replacing the image being edited. Back up PostgreSQL and both image volumes before migration 0011; the new retention policy also applies to existing unreviewed automatic images.
 
-## Updating an existing installation to 0.7.1
+## Updating an existing installation
 
-Follow the [upgrade guide](docs/UPDATE.md) before restarting. Keep the existing `.env`, encryption key, Compose project and volumes. Back up the database and both image stores while backend and worker are stopped. Pin `FILLENS_VERSION=0.7.1` for prebuilt images; source installations check out `v0.7.1` and rebuild. 0.7.x adds no migration; from 0.5.2, migrations 0009–0011 run automatically. Existing accounts, camera assignments, confirmed examples and models are preserved; unreviewed automatic images use seven-day retention by default. A rollback requires the matching complete backup.
+From 0.8.0, installations using the prebuilt images (Synology) update from the portal: **System → Software update → check for updates → install**. The `updater` service pulls the new images, dumps the database to `backups/`, sets `FILLENS_VERSION` in `.env`, restarts the services and waits until the new version is healthy. It needs the Docker socket (root-equivalent, see [SECURITY.md](SECURITY.md)). Back up the image volumes yourself beforehand.
+
+Moving to 0.8.0 is a one-time manual step: copy the new `deploy/synology/compose.yaml`, add `UPDATER_TOKEN` and `FILLENS_VERSION=0.8.0` to the existing `.env`, then run `docker compose up -d --pull always`. A plain restart does not pull new images – if the old version keeps running, check `FILLENS_VERSION` in `.env` and `curl …/api/health`. Source installations check out `v0.8.0` and rebuild. Details (German): [docs/UPDATE.md](docs/UPDATE.md). 0.6.0–0.8.0 add no migration; from 0.5.2, migrations 0009–0011 run automatically. A rollback requires the matching complete backup.

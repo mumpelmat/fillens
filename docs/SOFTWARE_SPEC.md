@@ -1,4 +1,18 @@
-# Softwarespezifikation · Fillens 0.7.1
+# Softwarespezifikation · Fillens 0.8.0
+
+## Version 0.8.0 · 17.11.2026: Update im Portal
+
+| Bereich | Spezifikation |
+|---|---|
+| Oberfläche | Seite **System**, Kachel „Software-Update“ (nur Admins): installierte Version, „Nach Updates suchen“, Release-Notes als Text, „Update auf X installieren“ mit Bestätigung, Fortschritt (Abfrage alle 4 s, Ausfälle während des Neustarts toleriert), automatisches Neuladen nach Erfolg. Ohne Updater Verweis auf `docs/UPDATE.md`. |
+| API | `GET /api/system/update` → `current_version`, `updater` (`missing`/`unreachable`/`ready`), gefilterter Status. `POST /api/system/update/check` → neueste GitHub-Version, Titel, Datum, Notes (max. 20 000 Zeichen), Link, `update_available`. `POST /api/system/update/install {version}` → 202 mit Status; nur `X.Y.Z`, nur die zuletzt (≤ 1 h) geprüfte und neuere Version. Alle Admin-geschützt, POST mit CSRF. `GET /api/health` liefert zusätzlich `version`. |
+| Konfiguration | `UPDATER_URL`, `UPDATER_TOKEN` (beide leer = keine Update-Funktion), `RELEASE_API_URL` (Standard GitHub-API `mumpelmat/fillens`). Version zentral in `backend/app/version.py`; Release-Packager prüft Gleichstand mit `pyproject.toml` und `package.json`. |
+| Updater | Eigener Dienst/Image `fillens-updater`, Port 8080 nur intern, Bearer-Token ≥ 32 Zeichen. Ablauf: Vorprüfung (Version neuer als laufende, Release-Asset `fillens-X-update.json` vorhanden, SHA256 der lokalen `compose.yaml` gleich `compose_sha256`) → `compose pull` mit Zielversion → Backup (`.env`, Compose-Dateien, `pg_dump -Fc`, `pg_restore --list`) unter `backups/vor-X-<Zeit>/` → Stopp Worker/Backend → atomarer Austausch nur der Zeile `FILLENS_VERSION` (Zeilenenden und Rechte bleiben) → `up -d --no-deps backend worker frontend` → Warten auf Health-Version und gesunde Dienste (max. 10 min) → Selbsterneuerung per Hilfscontainer. Ein Update gleichzeitig; Status in `backups/update-status.json`; beim Neustart mitten im Update wird der Status auf „fehlgeschlagen“ gesetzt. |
+| Fehler | Vor dem Versionswechsel: Abbruch, alte Dienste laufen weiter, `.env` unverändert. Danach: Status „fehlgeschlagen“ mit Backup-Pfad; kein automatisches Downgrade (Migrationen). |
+| Datenschutz | Ausgehende Anfragen nur auf Admin-Klick (Backend → api.github.com) und während eines Updates (Updater → github.com, GHCR). Keine Nutzer- oder Installationsdaten werden übertragen. |
+| Daten | Keine Migration; Schema bleibt `0011`. |
+| Abhängigkeiten | Next.js auf 16.4.5 (Sicherheitspatch); keine neuen Python-/npm-Pakete. Neues Basisimage `docker:27.5.1-cli` + Alpine-`python3` für den Updater. |
+
 
 ## Version 0.7.1 · 13.11.2026: Versionsanzeige
 

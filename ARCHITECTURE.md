@@ -74,6 +74,8 @@ Diagramme liefern maximal 800 gleichmäßig verteilte Punkte, einschließlich ä
 
 Compose startet vier Services mit Healthchecks und drei Volumes. Keine fest eingebauten öffentlichen Domains. `APP_BASE_PATH` wird beim Frontend-Build und für die Backend-Cookies gesetzt. `BACKEND_INTERNAL_URL` ist serverseitige Laufzeitkonfiguration. Beide Anwendungsimages laufen ohne Root. TLS, Host-Backups und FTP-Aufbewahrung sind Aufgaben der Zielinstallation.
 
+Ab 0.8.0 ergänzt `deploy/synology/compose.yaml` den Dienst `updater` (Verzeichnis `updater/`): Docker-CLI 27 mit Compose-Plugin und ein Python-Skript ohne Fremdbibliotheken. Er bindet den Docker-Socket (Root-äquivalent) und den Projektordner unter `/project` ein, hat keinen veröffentlichten Port und nimmt nur tokengeschützte Anfragen des Backends an (`GET /status`, `POST /update`). Den Host-Projektordner und den Projektnamen ermittelt er aus seinen eigenen Compose-Labels und ruft `docker compose --project-directory <Host-Pfad>` auf, damit relative Bind-Mounts auf dieselben Host-Ordner zeigen. Den eigenen Container erneuert er über einen losgelösten Hilfscontainer. Der Status liegt in `backups/update-status.json`. Das Backend (`update_api.py`) fragt GitHub-Releases nur auf Klick ab und leitet ausschließlich eine zuvor geprüfte Versionsnummer weiter. Die Root-`compose.yaml` für Quellcode-Builds enthält keinen Updater.
+
 Installation, Update und lokales Setup stehen in [README.md](README.md). Docker-Start und reale FTP-Integration sind geprüft. Browserprüfung mit synthetischen Daten ist erfolgt; reale Modellqualität und vollständige Backup-Wiederherstellung bleiben offen.
 
 ## Erweiterung 0.2.0: Suchstrategie und Aktivitätsstatus

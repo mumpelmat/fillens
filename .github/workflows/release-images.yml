@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        component: [backend, frontend]
+        component: [backend, frontend, updater]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3

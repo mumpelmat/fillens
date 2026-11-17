@@ -48,10 +48,12 @@ from .worker_control import request_run, worker_fresh
 from .password_reset import router as password_reset_router
 from .level_correction import correct_level, create_manual_measurement
 from .user_admin import delete_user, set_password, set_role
+from .update_api import router as update_router
+from .version import APP_VERSION
 
 app = FastAPI(
     title="Fillens API",
-    version="0.7.1",
+    version=APP_VERSION,
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
@@ -60,6 +62,7 @@ logger = logging.getLogger("fillens.api")
 app.include_router(training_router)
 app.include_router(operations_router)
 app.include_router(password_reset_router)
+app.include_router(update_router)
 
 
 @app.middleware("http")
@@ -125,7 +128,7 @@ def user_data(user: User) -> dict:
 @app.get("/api/health")
 def health(db: DB):
     db.execute(text("SELECT 1"))
-    return {"status": "ok"}
+    return {"status": "ok", "version": APP_VERSION}
 
 
 @app.post("/api/auth/login")

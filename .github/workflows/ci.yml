@@ -44,6 +44,18 @@ jobs:
           FILLENS_TEST_DATABASE_URL: ${{ matrix.database == 'postgres' && 'postgresql+psycopg://fillens:fillens@localhost:5432/fillens_test' || '' }}
         run: uv run pytest -q
 
+  updater:
+    name: Updater-Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "pytest>=8,<10"
+      - run: python -m pytest -q updater/tests
+      - run: docker build -t fillens-updater:ci updater
+
   frontend:
     name: Frontend-Typprüfung und Build
     runs-on: ubuntu-latest
